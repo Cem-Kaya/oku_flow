@@ -134,6 +134,10 @@ struct AdbRuntime {
     // a healthy answer does not consume the reconnect budget.
     std::map<std::pair<std::uint16_t, std::string>, Clock::time_point> nextUsbHealthProbe;
     std::map<std::string, unsigned> occupied;
+    // When a phone session last delivered a decoded frame (NowMs; -1:
+    // never). A session that delivers is live; one that is registered but
+    // silent is starting or reconnecting (see PhoneSessionBlocksStop).
+    std::atomic<std::int64_t> lastSessionFrameMs{-1};
     // The private server launched by this process, if owned mode engaged.
     // Shared so an in-flight EnsureRunning keeps it alive while teardown or
     // a test-hook reset stops it; never persisted across restarts.
@@ -2245,18 +2249,19 @@ void NoteListenerUnopenable(const ListenerLookup& listener, std::uint64_t episod
     if (runtime.doctor.NoteDefaultStopRefused(episode)) runtime.refusedListener = listener.identity;
 }
 
-// A live or starting phone session is registered (OccupiedPhone), or a
-// fixture reports one.
-bool PhoneSessionRegistered()
+// A LIVE phone session uses the connection (registered and delivering
+// frames), or a fixture reports one. A session that is only starting or
+// reconnecting does not count: see PhoneSessionBlocksStop.
+bool PhoneSessionLive()
 {
     auto& runtime = Runtime();
     std::optional<PhoneAdbTestHooks> hooks;
     {
         std::lock_guard lock(runtime.mutex);
-        if (!runtime.occupied.empty()) return true;
+        if (PhoneSessionBlocksStop(!runtime.occupied.empty(), runtime.lastSessionFrameMs.load(), NowMs())) return true;
         hooks = runtime.hooks;
     }
-    return hooks && hooks->phoneSessionRegisteredForTest && hooks->phoneSessionRegisteredForTest();
+    return hooks && hooks->phoneSessionLiveForTest && hooks->phoneSessionLiveForTest();
 }
 
 std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLinkObservation& o,
@@ -2406,13 +2411,19 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
             ? "private server started beside the default" : "private server beside the default is not ready yet";
     }
     case A::AskDefaultServerToExit: {
-        // A live or starting phone session is registered: the server it uses
-        // is never stopped. Which listener a session's sockets reach is not
+        // A live phone session (delivering frames): the server it uses is
+        // never stopped. Which listener a session's sockets reach is not
         // recorded (OkuFlow's endpoint can change while a session runs, and
         // a session opened on the default before a private server started
-        // keeps its sockets there), so any registered session refuses the
-        // stop, as an aborted one (bounded by abortedStopCap).
-        const auto sessionRegistered = [] { return PhoneSessionRegistered(); };
+        // keeps its sockets there), so any live session refuses the stop, as
+        // an aborted one (bounded by abortedStopCap; a live session reads
+        // Connected on the next cycle, which renews the budgets). A session
+        // that is only starting or reconnecting does not refuse it: it is
+        // registered for most of the time a manual pick or an automatic
+        // reconnect retries against a hung default, and refusing for it
+        // would name "another program" instead of stopping the hung server
+        // the session is waiting for.
+        const auto sessionRegistered = [] { return PhoneSessionLive(); };
         // An ask that sends no host:kill is not remembered as sent: no
         // termination follows it as if the request had been ignored, and
         // it does not use up one of the episode's asks.
@@ -2431,7 +2442,7 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         const auto port = DefaultPort();
         if (const auto hooks = Hooks(); hooks && hooks->beforeDefaultStopForTest) hooks->beforeDefaultStopForTest();
         if (stale()) return drop();
-        if (sessionRegistered()) return notSent("kept: a phone session is registered");
+        if (sessionRegistered()) return notSent("kept: a live phone session uses the connection");
         // Like termination, asking to exit needs the Windows ADB interface
         // at execution time: a phone unplugged since the decision is no
         // reason to stop anything.
@@ -2475,20 +2486,21 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
             request.afterHostKillConnectForTest = hooks->afterHostKillConnectForTest;
         request.hostKillWait = std::chrono::milliseconds(policy.hostKillWaitMs);
         if (stale()) return drop();
-        if (sessionRegistered()) return notSent("kept: a phone session is registered");
+        if (sessionRegistered()) return notSent("kept: a live phone session uses the connection");
         { std::lock_guard lock(runtime.mutex); runtime.askedIdentity = listener.identity; }
         const auto result = TryStopDefaultAdbServer(request);
         if (!result.hostKillDelivered && stale()) return drop();
         if (!result.hostKillDelivered && result.status == DefaultAdbStopStatus::Canceled && sessionRegistered())
-            return notSent("kept: a phone session is registered");
+            return notSent("kept: a live phone session uses the connection");
         NoteStopOutcome(result.status, listener, decision.episode);
         if (result.status == DefaultAdbStopStatus::Stopped) return "default server exited after host:kill";
         if (!result.hostKillDelivered) return notSent("default server ask: " + result.diagnostic);
         return "default server ask: " + result.diagnostic;
     }
     case A::TerminateDefaultServer: {
-        // As for the ask: a registered phone session refuses the stop.
-        const auto sessionRegistered = [] { return PhoneSessionRegistered(); };
+        // As for the ask: a live phone session refuses the stop; a starting
+        // or reconnecting one does not.
+        const auto sessionRegistered = [] { return PhoneSessionLive(); };
         if (DefaultIsUserEndpoint() || !o.phoneWanted) return "refused: user endpoint or no phone intent";
         const auto port = DefaultPort();
         // Dropped for a changed source: the attempt is given back uncounted.
@@ -2512,7 +2524,7 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
             runtime.doctor.NoteTerminationAborted(decision.episode, decision.hostKillAlreadySent);
             return std::string(reason);
         };
-        if (sessionRegistered()) return aborted("kept: a phone session is registered");
+        if (sessionRegistered()) return aborted("kept: a live phone session uses the connection");
         if (o.serverProbe == PhoneServerProbe::Responsive || o.shadowRunning) {
             bool answeredFail = false;
             const auto listed = ListDefaultEntries(canceled, &answeredFail);
@@ -2600,11 +2612,11 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
             request.afterHostKillConnectForTest = hooks->afterHostKillConnectForTest;
         request.hostKillWait = std::chrono::milliseconds(policy.hostKillWaitMs);
         if (stale()) return drop();
-        if (sessionRegistered()) return aborted("kept: a phone session is registered");
+        if (sessionRegistered()) return aborted("kept: a live phone session uses the connection");
         const auto result = TryStopDefaultAdbServer(request);
         if (!result.hostKillDelivered && !result.terminated && stale()) return drop();
         if (!result.terminated && result.status == DefaultAdbStopStatus::Canceled && sessionRegistered())
-            return aborted("kept: a phone session is registered");
+            return aborted("kept: a live phone session uses the connection");
         NoteStopOutcome(result.status, listener, decision.episode);
         return "default server stop: " + result.diagnostic;
     }
@@ -3399,6 +3411,7 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
                     decoder->Decode(std::span(reinterpret_cast<const std::uint8_t*>(data.constData()), static_cast<size_t>(data.size())),
                     normalized, [&](MediaFrame&& frame) {
                         progress.FrameDecoded(Clock::now());
+                        Runtime().lastSessionFrameMs.store(NowMs());
                         lastDecodedClock = frame.captureTimestamp100ns;
                         frame.sequenceNumber = outputSequence++;
                         if (!started) {

@@ -1037,7 +1037,7 @@ adb is named without a renewing pick and an adb killed at start
 another attached phone, and a hung-default shadow never handed back to a
 default that only answers. `phone_camera_contract` now runs about seven
 minutes (246 s after iteration 4, 322 s after iteration 5, 410 s after
-iteration 6); its CTest limit is 540 s (420 s left 10 s of margin). Its longest rows are bounded by production budgets (the 5 s camera
+iteration 6, 474 s after iteration 8, 495 s after iteration 9); its CTest limit is 720 s (540 s left 45 s of margin after iteration 9; the limit is a hang guard, raised openly by the orchestrator on 2026-11-17, and splitting the suite by function list is the better long-term answer once it grows further). Its longest rows are bounded by production budgets (the 5 s camera
 connection window of each start, 2 s shell health probes on a stalled
 transport, the private server's 5 s launch back-off, 1.1 s slow version
 replies), not by test waits, so they were not shortened. It was not split into
@@ -1142,7 +1142,9 @@ it `host:kill` once it went silent: no fixture change),
 `adbThatCannotStartBesideADefaultEndsOnceItCanStart` (an event drops the
 pending start request first, so only the rung's retry can end the sentence),
 `stopsAreRefusedWhileAPhoneSessionIsRegistered` (hook
-`phoneSessionRegisteredForTest`), `refusedConnectWithOnlyAnIpv6RowIsNoListener`
+`phoneSessionLiveForTest`), `onlyALivePhoneSessionForbidsAStop` (the pure
+rule: registered and a frame within 2 s; a starting or reconnecting session
+does not forbid a stop), `refusedConnectWithOnlyAnIpv6RowIsNoListener`
 (an injected `::` row), and the session start through the default added to
 `adbThatCannotStartBesideABlindDefaultIsNamed`. The listing-failure rows use
 `listingMode` 3 (closed at once) where a hang's time-out adds nothing. Doctor:

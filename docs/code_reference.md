@@ -1931,7 +1931,9 @@ so metadata generation cannot silently accept an incomplete copy.
   `DropStaleCycle`: last diagnosis, next cycle at once). `PhoneAdbTestHooks`
   seams of iteration 9: `linkStageForTest` ("locked", "default-probed",
   "decide"), `afterHostKillConnectForTest`, `legacyReclaimForTest`,
-  `phoneSessionRegisteredForTest`.
+  `phoneSessionLiveForTest`. `PhoneSessionBlocksStop` (pure): only a
+  session that is registered and delivered a frame within
+  `kLivePhoneSessionFrameMs` forbids an ask or a termination.
   `NoteDefaultStopRefused`, `NoteDefaultStopFailed` (second one refuses; the
   overloads taking `PhoneLinkDecision::episode` drop an outcome that arrives
   after a newer event), `ClearDefaultStopRefused` and

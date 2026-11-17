@@ -266,8 +266,11 @@ there now. OkuFlow's private server beside a default that lists the phone is
 handed back also when it does not answer or its listing fails. A session's
 own server request uses a responsive default whatever start beside it is
 requested. The ask and the termination refuse, as aborted stops, while a
-phone session is registered (which listener a session's sockets reach is not
-recorded, so any registered session counts), and a live session counts as
+phone session is live, that is registered and a frame was delivered within
+2 s (which listener a session's sockets reach is not recorded, so any live
+session counts; a session that is only starting or reconnecting does not, or a
+manual pick retrying against a hung default would keep that default from being
+stopped), and a live session counts as
 streaming by the frames the capture delivered. A restart deferred for a live
 session is given back. A refused IPv4 connect with only an IPv6 (`::`) row
 for the port is no listener.

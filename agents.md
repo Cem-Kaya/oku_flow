@@ -510,8 +510,13 @@ aligned with the project goals.
   when a listener changes, drop its listener-specific evidence and compare the
   identity wherever a confirmation is read. A rung whose own server is the
   broken part must look at the alternative that works (the default that lists
-  the phone). A safety refusal (a registered session) belongs in the executor
-  too, not only in the decision that relies on a measurement.
+  the phone). A safety refusal (a live session) belongs in the executor
+  too, not only in the decision that relies on a measurement; but it must
+  be as narrow as what it protects. Only a session that delivers frames
+  forbids a stop: a session that is merely registered is starting or
+  reconnecting, and against a hung server it is registered for most of the
+  time a manual pick or a reconnect retries, so refusing for it kept OkuFlow
+  from stopping the very server that session was waiting for.
 - Iteration 8 lessons. A server can answer `host:version` while every
   listing fails (upstream adb answers it without the transport lock): any
   listing failure after a ready server is "does not answer", never

@@ -238,8 +238,9 @@ be killed, not worked around. This replaces the earlier rule that an unknown
 listener is never terminated. Windows stops a default-port server only with
 phone-use intent, when no adb endpoint environment variable is set, no other
 device is in state DEVICE on that server (when it can still answer), and no
-live or starting phone session is registered (any registered session refuses
-the stop: which listener a session's sockets reach is not recorded). It first sends `host:kill` where the server can
+phone session is live (registered and delivering frames; any live session
+refuses the stop, because which listener a session's sockets reach is not
+recorded; a session that is only starting or reconnecting does not). It first sends `host:kill` where the server can
 still answer. It terminates only the exact process behind the listener OkuFlow
 reaches on `127.0.0.1` (the IPv4 loopback row; when there is none, the
 any-address row of that port, `0.0.0.0` or a dual-stack `::`), through a

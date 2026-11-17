@@ -10,7 +10,7 @@
   OkuFlow uses the other tool or says that its own cannot start, instead of
   blaming another program. A phone camera behind a PDF page or a recording is
   no longer treated as idle, and another program's Android tool is never
-  stopped while a phone session is starting or running.
+  stopped while a phone session is delivering frames.
 
 - The phone camera no longer stays on "Restoring USB connection…" when the
   Android tool answers but cannot list devices (as after sleep or a cable

@@ -4227,6 +4227,19 @@ private slots:
         QVERIFY(after.back().decision.diagnosis != okuflow::PhoneLinkDiagnosis::AdbCannotStart);
         QVERIFY(okuflow::OwnedAdbServerPort().has_value());
     }
+    void onlyALivePhoneSessionForbidsAStop() {
+        // After iteration 9: the ask and termination executors refused for
+        // any REGISTERED session. A manual pick or an automatic reconnect
+        // that retries against a hung default is registered for most of that
+        // time, so the hung server was named ("another program") instead of
+        // stopped. Only a session that delivers frames forbids the stop.
+        using okuflow::PhoneSessionBlocksStop;
+        const std::int64_t now = 100000;
+        QVERIFY(PhoneSessionBlocksStop(true, now - 100, now));                              // Live.
+        QVERIFY(!PhoneSessionBlocksStop(true, -1, now));                                    // Starting: no frame yet.
+        QVERIFY(!PhoneSessionBlocksStop(true, now - okuflow::kLivePhoneSessionFrameMs, now)); // Reconnecting: frames stopped.
+        QVERIFY(!PhoneSessionBlocksStop(false, now - 100, now));                            // Ended a moment ago.
+    }
     void stopsAreRefusedWhileAPhoneSessionIsRegistered_data() {
         QTest::addColumn<QString>("action");
         QTest::newRow("ask the default to exit") << QStringLiteral("ask");
@@ -4234,12 +4247,12 @@ private slots:
     }
     void stopsAreRefusedWhileAPhoneSessionIsRegistered() {
         // Iteration 9 (A9): the termination executor never looked at the
-        // registered sessions, and the doctor's "a live session" measured
-        // presented frames (none behind a PDF page): a hidden live session's
-        // server could be stopped. Ask and terminate refuse while a phone
-        // session is registered, as aborted stops: the rung ends in the
-        // sentence, never in a stop. (The session registers between the
-        // decision and the stop.)
+        // sessions, and the doctor's "a live session" measured presented
+        // frames (none behind a PDF page): a hidden live session's server
+        // could be stopped. Ask and terminate refuse while a phone session
+        // is live (delivering frames; the hook reports one), as aborted
+        // stops: the rung ends in the sentence, never in a stop. (The
+        // session goes live between the decision and the stop.)
         QFETCH(QString, action);
         const bool ask = action == QStringLiteral("ask");
         auto session = std::make_shared<std::atomic<bool>>(false);
@@ -4251,7 +4264,7 @@ private slots:
         ScopedLinkHooks hooks(fixture.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {},
                               ask ? 5000u : 100u, [session](okuflow::PhoneAdbTestHooks& h) {
             h.beforeDefaultStopForTest = [session] { session->store(true); };
-            h.phoneSessionRegisteredForTest = [session] { return session->load(); };
+            h.phoneSessionLiveForTest = [session] { return session->load(); };
             h.linkPolicy->abortedStopCap = 1;
         });
         const auto expected = ask ? okuflow::PhoneLinkAction::AskDefaultServerToExit
@@ -4259,7 +4272,7 @@ private slots:
         okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
         const auto reports = LinkCycles(120, [expected](const auto& r) { return r.decision.action == expected; });
         QCOMPARE(int(reports.back().decision.action), int(expected));
-        QCOMPARE(QString::fromStdString(reports.back().actionResult), QStringLiteral("kept: a phone session is registered"));
+        QCOMPARE(QString::fromStdString(reports.back().actionResult), QStringLiteral("kept: a live phone session uses the connection"));
         const auto started = std::chrono::steady_clock::now();
         const auto later = LinkCycles(400, [&](const auto& r) {
             return r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone ||

@@ -183,11 +183,10 @@ struct PhoneAdbTestHooks {
     // runs in place of the reclamation, and the branch goes on as for a
     // default that is not a legacy bundle.
     std::function<void()> legacyReclaimForTest;
-    // Reports a live or starting phone session as registered, for the
-    // refusal of the ask and termination executors (a real session
-    // registers when its start has its server; a fixture cannot hold one
-    // registered while the ladder decides a stop).
-    std::function<bool()> phoneSessionRegisteredForTest;
+    // Reports a live phone session (registered and delivering frames), for
+    // the refusal of the ask and termination executors (a fixture cannot
+    // hold a real session live while the ladder decides a stop).
+    std::function<bool()> phoneSessionLiveForTest;
     // Doctor budgets for fast fixtures; production uses PhoneLinkPolicy{}.
     std::optional<PhoneLinkPolicy> linkPolicy;
     // Owned-server budgets for fast fixtures (start grace, readiness,
@@ -196,6 +195,17 @@ struct PhoneAdbTestHooks {
     std::optional<OwnedAdbServerPolicy> ownedPolicy;
 };
 void SetPhoneAdbTestHooks(std::optional<PhoneAdbTestHooks> hooks);
+// Whether a phone session forbids stopping an adb server (pure). Only a LIVE
+// session does: registered, and a frame was delivered within
+// kLivePhoneSessionFrameMs. A session that is registered but silent is
+// starting or reconnecting; against a hung server it stays registered for
+// most of the time its start is retried, and it must not keep OkuFlow from
+// stopping the very server it is waiting for.
+inline constexpr std::int64_t kLivePhoneSessionFrameMs = 2000;
+constexpr bool PhoneSessionBlocksStop(bool registered, std::int64_t lastFrameMs, std::int64_t nowMs)
+{
+    return registered && lastFrameMs >= 0 && nowMs - lastFrameMs < kLivePhoneSessionFrameMs;
+}
 // Test seam (read only): a private-server start beside the default is
 // requested and not yet consumed or dropped.
 bool PhoneAdbShadowRequestedForTest();
