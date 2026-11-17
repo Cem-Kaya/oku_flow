@@ -518,7 +518,10 @@ aligned with the project goals.
   be confirmed again; termination goes on only when that listing fails or
   times out. Two programs never fight without an end state: per-episode caps
   on restarts, `host:kill`, terminations and private-server starts beside the
-  default plus hand-backs end in a sentence.
+  default plus hand-backs end in a sentence. Every start beside the default
+  counts (also the transport's own beside a hung default); at the cap a
+  hand-back to a default that lists the phone is still made, so the count
+  never ends on the blind side.
 - Never shorten the 5 s hang confirmation after an event; events restart it.
   Confirm a hang from the doctor's own probe too (the borrowed branch of
   `EnsureAdbServer` no longer runs once a private server exists).

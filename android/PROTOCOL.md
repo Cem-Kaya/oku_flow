@@ -140,8 +140,12 @@ diagnosis and one next action, least disturbing first:
    listener: that listing never stops `host:kill` or termination from going on. Starts of the
    private server beside the default and hand-backs (also the hand-back of a
    private server started for a hung default, which needs the same usable
-   listing, never just an answer) are capped at four per episode, then Windows
-   says another program is using the phone's USB connection.
+   listing, never just an answer) are counted together, also the private
+   server started at once beside a confirmed hung default. At four per
+   episode no more private servers are started beside the default, while a
+   default that lists the phone is still handed back to (the count ends where
+   the phone is listed); then Windows says another program is using the
+   phone's USB connection.
    If neither lists it 6 s later and that default lists no other device in
    state DEVICE, Windows sends it `host:kill` (the ordinary request every adb
    client sends on a version mismatch). If its listener remains 2 s later, or

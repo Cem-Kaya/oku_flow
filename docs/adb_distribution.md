@@ -168,7 +168,9 @@ shown with the same sentence, until the listener is gone or changes or the
 phone is listed. Termination requires the Windows ADB interface to be present,
 checked again when the stop runs; "unknown" never counts for a stop.
 Per episode at most two `host:kill` requests, three terminations and four
-private-server starts beside the default plus hand-backs; another adb that
+private-server starts beside the default plus hand-backs (the start beside a
+hung default counts; at the cap no more starts, but a hand-back to a default
+that lists the phone is still made); another adb that
 appears beside OkuFlow's blind server is handed back to when it lists the phone
 in a usable state and otherwise taken over under the same caps. A phone that
 default listed ready while its adbd timed out there is not served by it. Overridden

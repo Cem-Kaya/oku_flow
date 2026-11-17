@@ -237,7 +237,9 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         hostKillSent_ = hostKillSent;
         return A::TerminateDefaultServer;
     };
-    // Rung 4a and its reverse (4d) are capped together per episode: a
+    // Rung 4a and its reverse (4d) are counted together per episode (also
+    // the transport's own start beside a hung default and its hand-back):
+    // at the cap no more private servers start beside the default, so a
     // default that alternately lists and loses the phone is named.
     const auto shadow = [&] {
         if (handOvers_ >= policy_.handOverCap) { *raised = D::OtherProgramHoldsPhone; return A::WaitForUser; }
@@ -277,8 +279,10 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         // The default lists the phone usable (ready, unauthorized or
         // authorizing): use it. Offline there is not serving it, and
         // neither is "ready" for a phone whose adbd timed out there.
+        // Also at the hand-over cap: the cap prefers the configuration in
+        // which the phone is listed (no more private servers beside the
+        // default are started, see shadow()).
         if (owned && o.shadowRunning && o.defaultListsPhone && !o.defaultPhoneStalled) {
-            if (handOvers_ >= policy_.handOverCap) { *raised = D::OtherProgramHoldsPhone; return A::WaitForUser; }
             if (!handback_.Allowed(nowMs)) return A::Relist;
             Reserve(handback_, nowMs, policy_.reconnectRetryMs, policy_.reconnectRetryMs);
             ++handOvers_;

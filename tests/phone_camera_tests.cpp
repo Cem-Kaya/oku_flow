@@ -1399,6 +1399,33 @@ private slots:
         QVERIFY(recovered.front().phoneServerEpoch != 0);
         QVERIFY(!borrowed.Services().contains(QStringLiteral("host:kill")));
     }
+    void privateServerBesideAHungDefaultCountsTowardTheHandOverCap() {
+        // Iteration 4 (A3): the transport's own start beside a hung default
+        // counts toward the per-episode hand-over cap and is not made at the
+        // cap (cap 0); its hand-back to a default that lists the phone is
+        // still made at the cap (cap 1: the start reached it).
+        for (const int cap : {0, 1}) {
+            FakePhoneAdb borrowed(false, false, false, FakePhoneAdb::LaunchMode::None,
+                                  FakePhoneAdb::RecoveryMode::ServerStalled, false);
+            ScopedLinkHooks hooks(borrowed.port, okuflow::PhoneAdbInterface::Present,
+                                  OwnedChildFixturePath().toStdWString(), {}, 0,
+                                  [cap](okuflow::PhoneAdbTestHooks& h) { h.linkPolicy->handOverCap = cap; });
+            using Intent = okuflow::PhoneServerIntent;
+            bool listed = false;
+            for (int attempt = 0; attempt < 3 && !okuflow::OwnedAdbServerPort(); ++attempt)
+                okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, {}, nullptr, Intent::PhoneUse);
+            if (cap == 0) {
+                QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
+                continue;
+            }
+            QVERIFY(okuflow::OwnedAdbServerPort().has_value());
+            borrowed.hostUnresponsive.store(false);
+            borrowed.deviceStalled.store(false);
+            for (int attempt = 0; attempt < 3 && okuflow::OwnedAdbServerPort(); ++attempt)
+                okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, {}, nullptr, Intent::PhoneUse);
+            QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
+        }
+    }
     void ownedWiringShadowNeverHandsBackWithPrivateTransports() {
         ScopedOwnedAdbHooks hooks({L"--fixture-device"}, 0);
         FakePhoneAdb borrowed(false, false, false, FakePhoneAdb::LaunchMode::None,

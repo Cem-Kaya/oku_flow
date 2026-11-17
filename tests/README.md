@@ -1044,6 +1044,9 @@ Windows answering "unknown" another adb is never asked to exit or stopped
 (blind default and hung default end in the re-plug sentence) and a first start
 wants a listed USB phone. The doctor test `blindWithoutWindowsInterfaceNeverEscalates`
 was renamed `windowsCannotTellNeverStopsAnotherServer` and changed deliberately.
+The private server started beside a hung default counts toward the hand-over
+cap and is handed back at the cap (`privateServerBesideAHungDefaultCountsTowardTheHandOverCap`,
+policy hook `handOverCap` 0 and 1).
 `phone_link_text` (headless) checks one sentence per diagnosis and that every
 sentence is translated in all 24 catalogs. The native slot
 `phoneSentenceIsShownAndSpokenForEveryDiagnosis` delivers every verdict

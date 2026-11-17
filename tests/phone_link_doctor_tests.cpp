@@ -375,6 +375,38 @@ private slots:
         QCOMPARE(int(doctor.Decide(listing, now).action), int(A::Relist)); // Blind grace first.
         QCOMPARE(int(doctor.Decide(listing, now + doctor.Policy().blindGraceMs).action), int(A::HandBackToDefault));
     }
+    void handOverCapEndsWhereThePhoneIsListed()
+    {
+        // Iteration 4 (A3): the count can end on either side. Here it reaches
+        // the cap on the private side (an odd count of the doctor's own
+        // rungs, as after the transport's uncounted start beside a hung
+        // default). At the cap the default that lists the phone is still
+        // handed back to, and no more private servers are started.
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        const auto lost = Blind(PhoneServerKind::BorrowedDefault);
+        auto listing = Blind(PhoneServerKind::Owned);
+        listing.shadowRunning = true;
+        listing.defaultListsPhone = true;
+        std::int64_t now = 0;
+        const auto next = [&](const PhoneLinkObservation& o) {
+            PhoneLinkDecision last;
+            for (int i = 0; i < 400; ++i, now += 500) {
+                last = doctor.Decide(o, now);
+                if (last.action != A::Relist) break;
+            }
+            return last;
+        };
+        QCOMPARE(int(next(listing).action), int(A::HandBackToDefault)); // 1
+        QCOMPARE(int(next(lost).action), int(A::StartShadowServer));    // 2
+        QCOMPARE(int(next(listing).action), int(A::HandBackToDefault)); // 3
+        QCOMPARE(int(next(lost).action), int(A::StartShadowServer));    // 4: the cap, private side.
+        QVERIFY(!doctor.HandOverAllowed());
+        QCOMPARE(int(next(listing).action), int(A::HandBackToDefault)); // Still made at the cap.
+        const auto named = next(lost);
+        QCOMPARE(int(named.diagnosis), int(D::OtherProgramHoldsPhone));
+        QCOMPARE(int(named.action), int(A::WaitForUser));
+    }
     void authorizingGetsAShortGraceFirst()
     {
         // Changed deliberately (iteration 2, B3): authorizing is the Allow

@@ -156,8 +156,12 @@ struct PhoneLinkPolicy {
     int askExitCap{2};
     int terminateCap{3};
     // Per episode: starts of the private server beside the default plus
-    // hand-backs to it. A default that alternately lists and loses the
-    // phone ends in the other-program sentence instead of a swap loop.
+    // hand-backs to it (the transport's own start beside a hung default and
+    // its own hand-back count too). At the cap no more private servers are
+    // started beside the default, while a hand-back to a default that lists
+    // the phone is still made: the count ends where the phone is listed. A
+    // default that alternately lists and loses the phone ends in the
+    // other-program sentence instead of a swap loop.
     int handOverCap{4};
     // A phone listed offline, connecting or stalled (or with no
     // permissions) by a server OkuFlow does not own: this many targeted
@@ -247,9 +251,11 @@ public:
         NoteDefaultStopFailed();
         return true;
     }
-    // The transport handed USB back to the default on its own (a shadow
-    // started for a hung default that now lists the phone): it counts
-    // toward the per-episode hand-over cap like the ladder's own.
+    // The transport started a private server beside a hung default, or
+    // handed USB back to the default on its own (that shadow, now that the
+    // default lists the phone): both count toward the per-episode
+    // hand-over cap like the ladder's own. HandOverAllowed gates only new
+    // starts beside the default; a hand-back is always allowed.
     bool HandOverAllowed() const { return handOvers_ < policy_.handOverCap; }
     void NoteHandOver() { ++handOvers_; }
     std::uint64_t Episode() const { return episode_; }

@@ -608,7 +608,9 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
             bool handback = false;
             { std::lock_guard lock(runtime.mutex);
               runtime.shadowHandbackProbes = readyDefault ? runtime.shadowHandbackProbes + 1 : 0;
-              handback = runtime.shadowHandbackProbes >= 2 && runtime.doctor.HandOverAllowed();
+              // Also at the hand-over cap: the cap prefers the side where
+              // the phone is listed.
+              handback = runtime.shadowHandbackProbes >= 2;
               if (handback) runtime.doctor.NoteHandOver(); }
             if (handback) {
                 CheckCanceled(canceled);
@@ -683,8 +685,23 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
         }
         // The private server takes over USB at once. A hung default that
         // keeps the phone is then stopped by the link doctor (owner decision
-        // of 2026-11-17), never here and never by name.
-        { std::lock_guard lock(runtime.mutex); runtime.shadowServer = !recoveredLegacy; runtime.shadowForBlindness = false; }
+        // of 2026-11-17), never here and never by name. This start beside
+        // the default counts toward the per-episode hand-over cap (unless
+        // the doctor's own start-shadow rung already counted it); at the cap
+        // no private server starts beside it and the doctor terminates the
+        // hung default or names it.
+        {
+            std::lock_guard lock(runtime.mutex);
+            if (!recoveredLegacy) {
+                if (!runtime.shadowRequested) {
+                    if (!runtime.doctor.HandOverAllowed()) return Result::BorrowedUnresponsive;
+                    runtime.doctor.NoteHandOver();
+                }
+                runtime.shadowRequested = false;
+            }
+            runtime.shadowServer = !recoveredLegacy;
+            runtime.shadowForBlindness = false;
+        }
     } else {
         NoteDefaultProbe(defaultProbe, std::nullopt);
     }
