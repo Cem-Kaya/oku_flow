@@ -591,10 +591,11 @@ aligned with the project goals.
   fixture image and tag (`PhoneAdbTestHooks::siblingImage`), never this
   installation.
 - New placeholder sentences need all 24 catalogs and per-entry small-agent
-  review; the eleven 2026-11-17 phone sentences, the four of iteration 2 and
+  review; the eleven 2026-11-17 phone sentences, the four of iteration 2,
   the two of iteration 3 (companion camera failure, a different phone
-  connected) were written without that review (the implementer ran without
-  sub-agents) and still need it.
+  connected) and the one of iteration 4 (open OkuFlow Camera and, if it shows
+  that streaming is paused, tap Resume streaming) were written without that
+  review (the implementer ran without sub-agents) and still need it.
 - While the phone is the wanted camera, its sentence owns the status line,
   also over a fallback webcam, over the generic reconnect text and over a
   passing notification (which goes to the tooltip and is announced once

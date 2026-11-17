@@ -39,11 +39,18 @@
   phone instruction owns the status line. A locked or paused phone is no
   longer "started" every few seconds over its instruction; it is woken and
   OkuFlow Camera is opened, and the camera starts once it is ready. When
-  OkuFlow Camera runs but does not answer, Windows now says to open it and,
+  OkuFlow Camera runs but does not answer, OkuFlow now says to open it and,
   if it shows that streaming is paused, to tap Resume streaming. When Windows
   cannot report the phone's USB interface, OkuFlow ends in the re-plug
   instruction instead of "Restoring USB connection…" for ever, and never stops
   another program's Android tool then.
+- Another Android tool whose phone starts answering again while OkuFlow takes
+  over is left running and used. A paused OkuFlow Camera that the phone keeps
+  closing is reopened at once only the first time, then every 20 seconds. An
+  Android connection set through the adb environment variables that does not
+  see the phone, or stops answering, ends in the re-plug instruction. A slow
+  Android tool that served another device no longer keeps OkuFlow saying
+  another program uses the phone once that device is gone.
 
 - Clarify the public Android privacy policy: OkuFlow Camera is an accessibility-focused
   USB companion, normal viewing does not upload camera images to the developer,
