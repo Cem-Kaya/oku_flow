@@ -137,7 +137,7 @@ Auto/ultrawide/main/telephoto choices where Android exposes the lenses.
 
 OkuFlow Camera sends your phone's camera to the Windows app over USB. It is optional; compatible USB/document cameras work without it.
 
-The companion is available through Google Play closed testing. **Android 0.1.4 (version code 5) was submitted to Alpha** through the CLI. Google review and availability of this update have not been independently verified; code 3 / 0.1.2 is the last confirmed tester publication. Invited testers use the [closed-test link](https://play.google.com/apps/testing/com.okuflow).
+The companion is available through Google Play closed testing. **Android 0.1.5 (version code 6) was submitted to Alpha** through the CLI on 17 November 2026, with the phone reconnect changes. Google review and availability of this update have not been independently verified; code 3 / 0.1.2 is the last confirmed tester publication. Invited testers use the [closed-test link](https://play.google.com/apps/testing/com.okuflow).
 
 When the test is available to you, install OkuFlow Camera, enable USB debugging and authorize your computer on the phone. Connect the cable, keep the phone app open and select **Advanced → Settings → Camera → OkuFlow Camera**. Phone and desktop compatibility testing continues; see the [Android guide](android/README.md) for setup and current limits.
 

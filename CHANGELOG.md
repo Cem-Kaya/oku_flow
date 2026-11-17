@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Submit Android 0.1.5 (code 6) with the phone-link recovery changes to the
+  Play closed test (Alpha). Not yet run on a device.
 - Picking the phone that is already chosen no longer cancels a phone
   connection step that is under way. Choosing another source while OkuFlow
   repairs the phone connection now also stops the repair inside OkuFlow's
