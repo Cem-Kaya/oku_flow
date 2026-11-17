@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Bind USB phone recovery to the Android tool that supplied the listing.
+  Preserve replacement servers and skip reconnects when the phone has already
+  recovered. Repeated live-session vetoes reach the existing stop limit.
+  Phone-link traces record fixed companion problem codes.
+
 - Submit Android 0.1.5 (code 6) with the phone-link recovery changes to the
   Play closed test (Alpha). Not yet run on a device.
 - Picking the phone that is already chosen no longer cancels a phone

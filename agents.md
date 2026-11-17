@@ -498,6 +498,12 @@ aligned with the project goals.
   ports and scripted probes; missing fixture registration must fail the gate.
 
 ## Phone reconnect ladder (2026-11-17)
+- Bind recovery evidence to its listener before sending the listing. Carry
+  that identity through the stop checks, and pin reconnect writes to their
+  observed endpoint. A live veto counts even if the session ends before the
+  result is handled. Check reservation give-backs by retrying without an
+  event, and test cleared timestamps directly so expiry cannot mask a failure.
+  Keep companion-provided text out of traces with fixed protocol tokens.
 - Iteration 9 lessons. An authority check must reach the shared helpers a
   guarded call reaches (the server request, the owned manager, the raw
   `host:kill` right before its first byte, the legacy reclamation), not only

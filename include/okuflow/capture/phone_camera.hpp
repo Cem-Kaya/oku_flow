@@ -190,6 +190,8 @@ struct PhoneAdbTestHooks {
     // the refusal of the ask and termination executors, in addition to the
     // real sessions (lets a test make one go live at an exact point).
     std::function<bool()> phoneSessionLiveForTest;
+    // A silent real-session fixture can stay registered through a stop decision.
+    std::optional<std::chrono::milliseconds> sessionConnectBudgetForTest;
     // Doctor budgets for fast fixtures; production uses PhoneLinkPolicy{}.
     std::optional<PhoneLinkPolicy> linkPolicy;
     // Owned-server budgets for fast fixtures (start grace, readiness,
@@ -215,7 +217,11 @@ bool PhoneAdbShadowRequestedForTest();
 // Test seam (read only): a phone session is registered, and whether the
 // production rule reads it live (PhoneSessionBlocksStop over the last
 // decoded frame; the phoneSessionLiveForTest hook is not consulted).
-struct PhoneSessionStateForTest { bool registered{false}; bool live{false}; };
+struct PhoneSessionStateForTest {
+    bool registered{false};
+    bool live{false};
+    std::int64_t lastFrameMs{-1};
+};
 PhoneSessionStateForTest ReadPhoneSessionStateForTest();
 // Stops only the private adb server this process launched and owns (exact
 // job-owned child). A borrowed pre-existing/overridden server is untouched.

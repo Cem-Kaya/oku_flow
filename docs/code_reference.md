@@ -1886,7 +1886,7 @@ so metadata generation cannot silently accept an incomplete copy.
   `afterHostKillConnectForTest` is the seam between connect and write;
   `LegacyAdbRecoveryRequest::stillWanted` is asked with every cancellation
   check of the legacy reclamation): exact listener PID, same PID/creation
-  as the decision-time identity, image `adb.exe`, not this process, optional
+  as the caller's pre-listing identity, image `adb.exe`, not this process, optional
   raw `host:kill`, revalidation and `TerminateProcess` on the held handle;
   `DefaultAdbStopResult` reports Stopped, NoListener, SelfListener, NotAdb,
   IdentityChanged, AccessDenied, HostKillIgnored (`terminateIfAlive=false`:
@@ -1918,9 +1918,12 @@ so metadata generation cannot silently accept an incomplete copy.
   `companionFailedGraceMs`, and the event-storm limits `resumeCoalesceMs`,
   `flapRemovals`, `flapWindowMs`, `flapQuietMs`; `OnEvent` returns false for a
   coalesced resume). `NoteExitRequestDropped`/`NoteTerminationDropped` give
-  back an ask or termination dropped for a changed source, uncounted
-  (`NoteTerminationDropped` also for a termination canceled inside the stop
-  without stopping anything, unless the cycle itself was canceled).
+  back an ask or termination dropped for a changed source, uncounted.
+  `ExecuteLinkAction` keeps a live-session veto from the termination helper's
+  authority callback and passes it to `NoteTerminationAborted`, including
+  when the session ends before the helper returns. The ask and both
+  termination paths check their pre-listing listener identity after listing,
+  after a stall re-check and before the stop helper.
   `OwnedAdbServer::UnansweredStarts` counts starts that never answered (one
   per start grace alive, one at death), reset when the child answers;
   `UnansweredStartsAtRetirement` adds a death not counted yet and a child
@@ -1938,7 +1941,9 @@ so metadata generation cannot silently accept an incomplete copy.
   `phoneSessionLiveForTest`; after round 10 `afterReconnectConnectForTest`
   (between a transport reconnect's connect and its write, where
   `AdbReconnectReply` asks the request's authority) and the read-only
-  `ReadPhoneSessionStateForTest`. `PhoneSessionBlocksStop` (pure): only a
+  `ReadPhoneSessionStateForTest` (including the stored frame timestamp).
+  `sessionConnectBudgetForTest` lets a silent session fixture stay registered
+  through the stop decision. `PhoneSessionBlocksStop` (pure): only a
   session that is registered and delivered a frame within
   `kLivePhoneSessionFrameMs` forbids an ask or a termination; the frame time
   is written where a frame is decoded and cleared when the last session ends
@@ -2015,7 +2020,13 @@ so metadata generation cannot silently accept an incomplete copy.
   `PhoneCameraTransport.RecoverStalledUsbTransport` requires a responsive adb
   version query, the same authorized USB serial/transport before and after a
   pair of timed-out independent shell echoes, plus a fresh non-claiming companion
-  timeout, then sends `host-transport-id:ID:reconnect`. The echo checks require
+  timeout, then sends `host-transport-id:ID:reconnect`. `ReconnectServer` carries
+  the listing port, ownership and default listener identity into
+  `AdbReconnectReply`. `AdbRequest` uses the guarded socket write for the
+  final admission check. The offline ladder also re-lists on that port and
+  requires a matching eligible USB serial and ID. The ID-less fallback
+  requires continued owned-server status. `CompanionProblemTraceToken`
+  allows only known codes in diagnosis and session-end traces. The echo checks require
   all response bytes, not just one early byte. Post-ack listing must observe the
   stale ID disappearing or changing within two seconds before success.
   `AdbRuntime.nextUsbRecovery` limits requests to once per phone/server per

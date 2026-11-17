@@ -1165,9 +1165,16 @@ decoding frames keeps it, and the next cycle reads Connected; listener rows
 rewritten to a decoy `adb.exe`),
 `aSessionThatRegistersRightAfterALiveOneIsNotLive` (a decoded frame makes a
 session live; a session registering right after the last one ended is not),
-`terminationCanceledWithoutAStopIsGivenBack` (cap 1; the hung default is still
-terminated) and `transportReconnectIsNotWrittenAfterTheSourceChanged` (offline
-and stalled device; hook `afterReconnectConnectForTest`). Doctor:
+`terminationCanceledWithoutAStopIsGivenBack` (a stale intent refunds the
+attempt, while repeated transient live-session vetoes reach the aborted-stop
+cap), and `transportReconnectIsNotWrittenAfterTheSourceChanged` (offline and
+stalled device, with an immediate retry proving the stalled reservation was
+returned). The back-to-back session row asserts the cleared timestamp and the
+silent session fixture uses an extended connect budget. Round 11 adds
+`defaultStopKeepsAListenerThatReplacedTheOneListed` (ask and termination),
+`offlineReconnectUsesTheObservedTransport` (ready, endpoint swap and listener
+swap), and `companionProblemTraceUsesOnlyFixedCodes` (probe and hello error).
+Doctor:
 `silentPrivateServerBesideADefaultThatServesThePhoneIsHandedBack`,
 `restartDeferredForALiveSessionIsGivenBack`. Legacy:
 `requestThatLostItsAuthorityWritesNoHostKill`. Native:

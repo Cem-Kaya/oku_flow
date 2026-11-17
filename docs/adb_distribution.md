@@ -173,8 +173,11 @@ behind that listener (the IPv4 `127.0.0.1` row of the port; when there is none,
 its any-address row, `0.0.0.0` or a dual-stack `::`, as an adb started with
 `-a` binds: it answers OkuFlow's loopback probes too; `::1` alone is never
 reached and is ignored; every lookup and the legacy reclamation share this
-rule and the identity proof below is unchanged): it opens the listener's owning PID, requires the same PID
-and creation time as the identity observed when the decision was made, the
+rule and the identity proof below is unchanged). The ask and both termination
+paths capture the listener's PID and creation time before their pre-stop
+listing. They require the same listener after the listing, after any stall
+re-check and at the stop helper call. The helper opens the process and requires
+that original PID and creation time, the
 image file name `adb.exe`, a process other than OkuFlow, and the same listener
 again immediately before `TerminateProcess` on the held handle. Never by name,
 never a process tree, never a stored PID. A responsive server that lists
@@ -218,8 +221,8 @@ phone-intent generation is compared with the application's live one, which
 advances on every source or target change (a webcam, a file, another phone,
 no phone, an agent's temporary source): a stale cycle does nothing and traces
 "dropped: the source changed"; an ask or termination dropped this way is
-given back uncounted, as is a termination canceled inside the stop without
-stopping anything (unless the cycle itself was canceled). A termination beside
+given back uncounted. A live-session veto inside the stop counts as an
+aborted termination even if that session ends before the helper returns. A termination beside
 OkuFlow's server whose pre-stop
 listing is silent is an aborted stop until the listing hang is confirmed, then
 the stop goes on; a `FAIL` there is an answer and keeps the server. The
@@ -322,15 +325,20 @@ authorized USB listing and a separate timed-out shell echo are required;
 the serial/transport is rechecked after the timeout. It sends only
 `host-transport-id:ID:reconnect`: at once, 3 s later, then at most every 30 s
 per phone/server until the next event, including across new transport IDs or
-unsupported replies. A transport listed `offline`, `authorizing` or
-`connecting` receives the same targeted request without the DEVICE-only proof
-steps, because no client can use it in that state. An idle preferred
+unsupported replies. The offline ladder re-lists on the observed server
+before opening the reconnect socket. It requires the same USB serial and
+transport ID in a reconnect-eligible state. An active authorization handshake
+keeps its transport. Both paths connect to the observed port and re-check the
+endpoint and default listener identity at the write. An ID-less
+`host:reconnect-offline` also requires continued ownership of the private
+server. An idle preferred
 phone can receive the same recovery during background discovery while a
 fallback webcam is active. Ordinary browsing, explicit webcam intent, coded
 phone problems, busy sessions and live/starting phone ownership do not trigger
 it. A successful request still needs subsequent discovery and decoded frames.
-Other adb clients using that same phone lose their transport during this reset;
-other phones and the server process are retained.
+Other adb clients using that same phone lose their transport during a targeted
+reset. The phone-link trace uses fixed tokens for known companion problem codes
+and records unfamiliar codes as `unknown`.
 
 A globally hung server cannot acknowledge this transport request. The automatic
 server recovery above handles OkuFlow-owned or proven legacy support and, under
