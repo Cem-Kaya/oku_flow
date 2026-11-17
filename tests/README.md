@@ -1181,21 +1181,19 @@ child whose private listener row names another process. The offline table tests
 transitions to unauthorized, connecting and ready, including a ready transition
 after opening the reconnect socket. `stalledReconnectChecksTheAttachmentAfterConnect`
 covers a ready device re-registering with a different ID at the same point.
-Round 12 rows cover a reused transport ID, an endpoint switch and revocation
-during selection (`ladderLaunchUsesTheObservedServerAndPhone`), a reused ID
-at session startup (`sessionLaunchUsesTheSelectedUsbSerial`), targeted-only
-offline and stalled-device recovery for an unopenable listener (`unopenableDefaultReconnectRequiresATransportId`),
+`ladderLaunchUsesTheSelectedPhoneSerial` switches to a server that reuses
+the selected phone's transport ID for another serial and checks that the
+other phone gets no wake or activity command. `ladderLaunchOnReadableBorrowedDefault`
+checks that the wake and launch succeed with one discovery listing.
+`sessionLaunchKeepsTheExistingAdbRequests` checks every adb request from
+listing through a successful one-phone streaming start. `launchesRegisteredPackage`
+checks serial selection for the wake, Play activity and legacy fallback.
+Round 12 also covers targeted-only offline and stalled-device recovery for
+an unopenable listener (`unopenableDefaultReconnectRequiresATransportId`)
 and unreadable ownership after healthy readiness followed by recovery
 (`previouslyHealthyOwnedListenerMustRemainVerifiable`). That fixture also
 checks that an idle shadow skips private listings while ownership is
 unverified and requires two verified observations to hand back.
-`sessionLaunchUsesOneBoundedListingThenRetriesControl` checks a streaming
-start after a slow listing and launch, and a refusal when the listing
-exceeds the caller's budget. `ladderLaunchVerifiesOnceOnBorrowedDefault`
-counts listing requests for readable and unopenable listeners.
-`ladderGivesBackOnlyAnUnwrittenLaunch` checks same-episode retry after a
-refused write and a retained reservation when the wake was already sent.
-The doctor verifies the spacing and ignores a late refund after renewal.
 `absentUserEndpointIsNamedAndCanRecover` starts a fake on the configured port
 after the existing sentence appears. The doctor row
 `absentUserEndpointSharesTheUnresponsiveDeadline` checks the deadline and its

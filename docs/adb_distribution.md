@@ -346,18 +346,11 @@ phone problems, busy sessions and live/starting phone ownership do not trigger
 it. A successful request still needs subsequent discovery and decoded frames.
 Other adb clients using that same phone lose their transport during a targeted
 reset. The phone-link trace uses fixed tokens for known companion problem codes
-and records unfamiliar codes as `unknown`. Discovery and session startup bind
-wake and activity launch to the server that listed the selected phone. One
-fresh listing verifies the USB serial and current transport ID for the whole
-launch, including the legacy activity fallback. Both listing forms share a
-deadline, limited further by the time remaining for session negotiation.
-Each shell command selects by serial and rechecks listener and source
-authority before writing. Launch can use a unique borrowed default's PID
-when Windows cannot open the process. Stop authority still requires the
-existing process and creation-time evidence. A reservation with no shell
-bytes queued is returned to its launch budget with the retry spacing intact.
-Session startup reserves time in its overall deadline for a control connection
-after an activity write, even if the short connection window expired.
+and records unfamiliar codes as `unknown`. Discovery and session startup use
+`host:transport:<serial>` for wake and each activity command, including the
+legacy activity fallback. The USB serial identifies the selected phone even
+when a replacement adb server reuses its transport ID for another phone.
+The ladder checks source authority before each shell command.
 
 A globally hung server cannot acknowledge this transport request. The automatic
 server recovery above handles OkuFlow-owned or proven legacy support and, under

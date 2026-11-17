@@ -7,14 +7,13 @@
   first listing after its socket opens shows a changed phone state or attachment.
   Repeated live-session vetoes reach the existing stop limit.
   Phone-link traces record fixed companion problem codes.
-- Scope phone wake and launch to the selected USB phone and its observed
-  Android tool. Check the attachment once and try connecting again after
-  launching the companion. An automatic launch that sends nothing can retry.
-  A targeted reconnect or launch can still run when Windows cannot open a
-  borrowed default tool's process. Verify private listener ownership before
-  checking whether an idle shadow can hand back. Persistent loss of the bundled tool's listener
-  ownership and an absent configured endpoint reach their existing recovery
-  messages.
+- Select the phone by its USB serial for wake and launch so a replacement
+  Android tool cannot route those commands to a different phone.
+- A targeted reconnect can still run when Windows cannot open a borrowed
+  default tool's process. Verify private listener ownership before checking
+  whether an idle shadow can hand back. Persistent loss of the bundled tool's
+  listener ownership and an absent configured endpoint reach their existing
+  recovery messages.
 
 - Submit Android 0.1.5 (code 6) with the phone-link recovery changes to the
   Play closed test (Alpha). Not yet run on a device.

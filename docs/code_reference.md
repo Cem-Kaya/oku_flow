@@ -1961,9 +1961,7 @@ so metadata generation cannot silently accept an incomplete copy.
   after a newer event), `ClearDefaultStopRefused` and
   `NoteDefaultListenerChanged` carry the transport's stop outcomes and listener
   changes. `ReserveLaunch`/`RenewLaunches` are the one per-event companion
-  launch budget shared by the ladder and camera starts. `NoteLaunchDropped`
-  refunds an unwritten launch in its original launch generation, keeping
-  the reserved spacing. `BlindGracePassed`
+  launch budget shared by the ladder and camera starts. `BlindGracePassed`
   gates a leftover stop; `HandOverAllowed`/`NoteHandOver` count the
   transport's starts beside a hung default and every executed hand-back
   (the doctor's `HandBackToDefault` decision itself does not count; the
@@ -2016,18 +2014,11 @@ so metadata generation cannot silently accept an incomplete copy.
   those checks hold it back, and dropped by an event, by a phone-use start
   that is not beside a default any more (the default went away) and by a
   `ReleaseForWebcam` call. `OccupiedPhone` prevents overlapping
-  probes; `ReserveSessionLaunch` takes a camera start's single wake + launch from the
+  probes; `MayLaunch` takes a camera start's single wake + launch from the
   doctor's per-event budget (`PhoneLinkDoctor::ReserveLaunch`), and
-  `AllowAppLaunch` (a manual camera pick) renews it. `LaunchCompanion` uses
-  the observed server from discovery or session startup. It verifies the USB
-  serial and transport ID once with a shared deadline for both listing forms.
-  `Transport` selects by serial and checks listener/source authority at both
-  writes. The unique borrowed default can be identified by PID when its
-  creation time is unavailable. `CompanionLaunchWrites` tracks queued wake
-  and activity bytes separately so `ReturnUnusedLaunch` refunds only an
-  unwritten action and `Run` retries the control socket after an activity
-  write even if the connection window has elapsed. The control attempt
-  shares the overall `PhoneStartupBudget` deadline.
+  `AllowAppLaunch` (a manual camera pick) renews it. `LaunchCompanion` calls
+  `Transport` with only the serial for wake and both activity commands.
+  The ladder passes `stillWanted` to check authority before each shell command.
   `ControlHello` accepts a token-free `probe:true` ACK,
   supports older tokened ACKs and reads coded ERROR packets. Real hello and
   video binding are retried together within a bounded connection window.
