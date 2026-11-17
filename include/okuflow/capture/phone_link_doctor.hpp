@@ -308,9 +308,18 @@ public:
     void NoteExitRequestNotSent(std::uint64_t episode)
     {
         if (episode != episode_) return;
+        NoteExitRequestNotNeeded(episode);
+        ++abortedTakeoverStops_;
+    }
+    // An AskDefaultServerToExit of this episode found the default already
+    // gone: nothing was asked, so the ask is given back and not remembered
+    // as sent, and nothing was kept, so it does not count toward
+    // abortedStopCap.
+    void NoteExitRequestNotNeeded(std::uint64_t episode)
+    {
+        if (episode != episode_) return;
         askedExitMs_ = -1;
         if (askExit_.attempts > 0) --askExit_.attempts;
-        ++abortedTakeoverStops_;
     }
     std::uint64_t Episode() const { return episode_; }
     // The listener is gone, changed identity, or the phone is listed.

@@ -2090,7 +2090,14 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         if (StallEndedOnDefault(*listed, target, canceled))
             return notSent("kept: the phone answers on the default server now");
         const auto listener = LookupListener(port);
-        if (listener.state == ListenerState::None) { AfterDefaultStopped(); return "default server already gone"; }
+        if (listener.state == ListenerState::None) {
+            AfterDefaultStopped();
+            // Nothing was asked: the ask is given back, but nothing was kept
+            // either, so it is not an aborted stop.
+            std::lock_guard lock(runtime.mutex);
+            runtime.doctor.NoteExitRequestNotNeeded(decision.episode);
+            return "default server already gone";
+        }
         if (listener.state == ListenerState::Unopenable) {
             NoteListenerUnopenable(listener, decision.episode);
             return notSent("refused: the listener process cannot be opened");

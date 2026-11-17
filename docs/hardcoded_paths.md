@@ -678,7 +678,7 @@ shows after the 5 s blind grace, and when it stays unresponsive for 30 s
 (`userEndpointUnresponsiveMs`). Per
 episode: 3 blind/stuck restarts, 2 `host:kill`, 3 terminations, 3 aborted stops
 (terminations aborted because the default answered its pre-stop listing and
-`host:kill` requests never sent; counted apart from the caps, and apart for a
+`host:kill` requests never sent to a default that still listens; counted apart from the caps, and apart for a
 hung default and for a takeover, they end in the other-program sentence too), 4 private server starts beside the
 default plus hand-backs. Windows interface Unknown
 (the SetupAPI query failed): after 30 s blind OkuFlow may start or restart its

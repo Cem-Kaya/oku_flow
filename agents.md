@@ -535,7 +535,8 @@ aligned with the project goals.
   spend the termination cap. A `host:kill` request that was never sent
   (the pre-ask checks kept the server, or it was not delivered) is not
   remembered as sent, so no termination follows it, and it does not use up
-  an ask. Aborted terminations and unsent asks have their own per-episode
+  an ask; an ask that finds the default already gone is given back the
+  same way but is not an aborted stop (nothing was kept). Aborted terminations and unsent asks have their own per-episode
   count (`abortedStopCap`, 3), one per rung (the hung branch's aborted
   terminations; the takeover's unsent asks and aborted terminations), so
   the end of one rung never ends the other: at it the other-program

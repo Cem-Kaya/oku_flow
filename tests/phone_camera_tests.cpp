@@ -110,6 +110,8 @@ public:
             while (!stopped.load() && !closeListener.load()) {
                 if (!server.hasPendingConnections() && !server.waitForNewConnection(20)) continue;
                 std::unique_ptr<QTcpSocket> socket(server.nextPendingConnection());
+                // Gone from the listener table before it answers this request.
+                if (goneAtNextConnection.exchange(false)) { server.close(); closeListener.store(true); }
                 if (arrival == ArrivalMode::BufferedRequest) {
                     if (!socket->bytesAvailable() && !socket->waitForReadyRead(1000)) continue;
                     ++bufferedRequests;
@@ -144,6 +146,8 @@ public:
     std::atomic<bool> otherDevice{false};
     std::atomic<bool> exitOnKill{false};
     std::atomic<bool> closeListener{false};
+    // The next connection is still answered, but the listener closes first.
+    std::atomic<bool> goneAtNextConnection{false};
     // A second USB phone "xyz" in state DEVICE (otherDevice is a Wi-Fi one).
     std::atomic<bool> secondUsbPhone{false};
     // adb FAIL texts often carry the serial: the trace must not.
@@ -2873,6 +2877,46 @@ private slots:
         QCOMPARE(int(reports.back().decision.diagnosis), int(okuflow::PhoneLinkDiagnosis::NotListedByServer));
         QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::AskDefaultServerToExit));
         QVERIFY(!slow.Exited());
+    }
+    void askThatFindsTheDefaultGoneIsGivenBack() {
+        // Iteration 7 (4): the ask finds the default's listener already gone
+        // (it answered the pre-ask listing and closed). Nothing was asked, so
+        // the ask is given back; nothing was kept, so it is not an aborted
+        // stop. With one ask and one aborted stop per episode, another adb
+        // that appears beside OkuFlow's server is still asked to exit.
+        // The default is the in-process fake: it closes its listener before
+        // it answers the ask's pre-ask listing.
+        auto first = std::make_unique<FakePhoneAdb>(false, false, false, FakePhoneAdb::LaunchMode::None,
+                                                    FakePhoneAdb::RecoveryMode::Healthy, false);
+        first->listEmpty.store(true);
+        const quint16 port = first->port;
+        FakePhoneAdb* gone = first.get();
+        auto armed = std::make_shared<std::atomic<bool>>(false);
+        ScopedLinkHooks hooks(port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {},
+                              5000, [gone, armed](okuflow::PhoneAdbTestHooks& h) {
+            h.linkPolicy->askExitCap = 1;
+            h.linkPolicy->abortedStopCap = 1;
+            h.beforeDefaultStopForTest = [gone, armed] {
+                if (!armed->exchange(true)) gone->goneAtNextConnection.store(true);
+            };
+        });
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        auto reports = LinkCycles(60, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::AskDefaultServerToExit; });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::AskDefaultServerToExit));
+        QCOMPARE(QString::fromStdString(reports.back().actionResult), QStringLiteral("default server already gone"));
+        QVERIFY(armed->load());
+        QVERIFY(okuflow::OwnedAdbServerPort().has_value());
+        first.reset();
+        // Another adb on the port, blind beside OkuFlow's server.
+        FakePhoneAdb second(false, false, false, FakePhoneAdb::LaunchMode::None,
+                            FakePhoneAdb::RecoveryMode::Healthy, false, port);
+        second.listEmpty.store(true);
+        reports = LinkCycles(80, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::AskDefaultServerToExit ||
+                r.decision.diagnosis == okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone; });
+        QVERIFY(!Saw(reports, okuflow::PhoneLinkDiagnosis::OtherProgramHoldsPhone));
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::AskDefaultServerToExit));
     }
     void hostKillIsAbortedWhenTheInterfaceIsGoneAtExecution() {
         // Iteration 4 (B4): like termination, host:kill re-checks the

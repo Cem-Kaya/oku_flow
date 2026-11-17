@@ -1143,6 +1143,12 @@ server decision and its start, with no executable yet; the default comes back
 responsive in the same episode) and `requestIsDroppedWhenUsbIsReleasedForAWebcam`
 (a start request held back by the missing executable, then a `ReleaseForWebcam`
 call): in both, a later phone-use discovery starts no private server.
+`askThatFindsTheDefaultGoneIsGivenBack`: the default is the in-process fake,
+which closes its listener before it answers the ask's pre-ask listing
+(`goneAtNextConnection`), so the ask finds it already gone; with one ask and
+one aborted stop per episode, another blind default that appears beside
+OkuFlow's server is still asked to exit. Doctor row
+`askThatFindsTheDefaultGoneIsGivenBackUncounted`.
 `phone_link_text` (headless) checks one sentence per diagnosis and that every
 sentence is translated in all 24 catalogs. The native slot
 `phoneSentenceIsShownAndSpokenForEveryDiagnosis` delivers every verdict

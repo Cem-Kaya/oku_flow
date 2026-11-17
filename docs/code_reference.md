@@ -1924,7 +1924,9 @@ so metadata generation cannot silently accept an incomplete copy.
   `NoteExitRequestNotSent`
   does the same for an `AskDefaultServerToExit` that sent no `host:kill`
   (gives the ask back, forgets the ask time so no termination follows, and
-  counts toward the takeover's count); `Episode` names the
+  counts toward the takeover's count); `NoteExitRequestNotNeeded` gives back
+  an ask that found the default already gone without counting it (nothing
+  was kept); `Episode` names the
   current episode. `PhoneLinkDiagnosisName`/`ActionName`/`EventName` give trace
   names. A borrowed `ServerUnresponsive` with `defaultHasOtherDevices` (its
   listing answered and showed another device) is named, never stopped; the

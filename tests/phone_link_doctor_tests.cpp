@@ -1074,6 +1074,37 @@ private slots:
         QCOMPARE(int(last.diagnosis), int(D::OtherProgramHoldsPhone));
         QCOMPARE(int(last.action), int(A::WaitForUser));
     }
+    void askThatFindsTheDefaultGoneIsGivenBackUncounted()
+    {
+        // Iteration 7 (4): an ask whose default was already gone asked
+        // nothing (given back, no termination follows) and kept nothing (not
+        // an aborted stop): with one ask and one aborted stop per episode,
+        // the next ask still comes, and neither cap ends it.
+        PhoneLinkPolicy policy;
+        policy.askExitCap = 1;
+        policy.abortedStopCap = 1;
+        PhoneLinkDoctor doctor(policy);
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto beside = Blind(PhoneServerKind::Owned);
+        beside.shadowRunning = true;
+        QCOMPARE(int(doctor.Decide(beside, 0).action), int(A::Relist));
+        const auto first = doctor.Decide(beside, policy.takeoverGraceMs);
+        QCOMPARE(int(first.action), int(A::AskDefaultServerToExit));
+        doctor.NoteExitRequestNotNeeded(first.episode);
+        std::int64_t now = policy.takeoverGraceMs + policy.hostKillWaitMs;
+        QCOMPARE(int(doctor.Decide(beside, now).action), int(A::Relist)); // No termination.
+        now = 2 * policy.takeoverGraceMs;
+        const auto second = doctor.Decide(beside, now);
+        QCOMPARE(int(second.diagnosis), int(D::NotListedByServer));
+        QCOMPARE(int(second.action), int(A::AskDefaultServerToExit));
+        // An earlier episode's note gives nothing back.
+        const auto earlier = doctor.Episode();
+        doctor.OnEvent(PhoneLinkEvent::Resume, 100000);
+        QCOMPARE(int(doctor.Decide(beside, 100000).action), int(A::Relist));
+        QCOMPARE(int(doctor.Decide(beside, 100000 + policy.takeoverGraceMs).action), int(A::AskDefaultServerToExit));
+        doctor.NoteExitRequestNotNeeded(earlier);
+        QCOMPARE(int(doctor.Decide(beside, 100000 + 2 * policy.takeoverGraceMs).action), int(A::TerminateDefaultServer));
+    }
     void anotherListedPhoneIsNotBlindness()
     {
         // C4: a second phone listed by the server is not "blind": no restarts.
