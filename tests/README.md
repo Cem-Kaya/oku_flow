@@ -992,6 +992,18 @@ synthetic phone session admits the bounded command before split stop, retires
 its token at Begin and rejects later admission. These rows establish command
 ownership/protocol behavior, not real-phone light or camera acceptance.
 
+The offline-shadow fixtures check that a responsive private server replaces
+its idle child and retains that child while a session is registered. The
+latter reaches the restart decision again with a one-slot cap to check the
+give-back. Session rows cover a delayed listener, an activity status withheld
+past the adb timeout, and a listener that stays closed through the remaining
+startup budget. All count activity requests. The legacy fixture revokes
+authority after sending `host:kill` and checks that the classified child
+survives. The discovery seam verifies a `DeviceRemoval` event revokes the
+predicate while source intent still holds. Doctor rows cover the sibling
+diagnosis at takeover caps, the ID-less borrowed offline grace and the ordering
+of owned restart versus reconnect.
+
 `phone_link_doctor` is model-free: every diagnosis (table-driven), every event
 reset, every budget, and the owner's sequences (sleep and resume, pull and
 re-plug within a second, unauthorized then authorized, offline fixed by a

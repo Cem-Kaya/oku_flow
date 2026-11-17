@@ -363,11 +363,12 @@ void CheckCanceled(const std::atomic<bool>* canceled)
 {
     if (canceled && canceled->load()) throw std::runtime_error("Phone camera canceled");
 }
-QByteArray Read(QTcpSocket& socket, int size, int timeout, const std::atomic<bool>* canceled = nullptr)
+QByteArray Read(QTcpSocket& socket, int size, int timeout, const std::atomic<bool>* canceled = nullptr,
+                Clock::time_point overallDeadline = Clock::time_point::max())
 {
     QByteArray result;
     result.reserve(size);
-    const auto deadline = Clock::now() + std::chrono::milliseconds(timeout);
+    const auto deadline = std::min(overallDeadline, Clock::now() + std::chrono::milliseconds(timeout));
     while (result.size() < size) {
         CheckCanceled(canceled);
         const auto bytes = socket.read(size - result.size());
@@ -954,11 +955,17 @@ OwnedAdbServer::EnsureResult EnsureAdbServerOnce(const std::atomic<bool>* cancel
             request.hasActiveOrStartingPhoneSessions = [&runtime] {
                 std::lock_guard lock(runtime.mutex); return !runtime.occupied.empty();
             };
-            request.stillWanted = stillWanted;
+            request.stillWanted = [&] {
+                if (stillWanted && !stillWanted()) return false;
+                std::lock_guard lock(runtime.mutex);
+                return runtime.doctor.Episode() == episode;
+            };
+            if (!request.stillWanted()) return Result::Canceled;
             LegacyAdbRecoveryResult result;
             if (hooks) {
-                hooks->legacyReclaimForTest();
-                result.status = LegacyAdbRecoveryStatus::NotManaged;
+                hooks->legacyReclaimForTest(request.stillWanted);
+                result.status = request.stillWanted() ? LegacyAdbRecoveryStatus::NotManaged
+                                                      : LegacyAdbRecoveryStatus::Canceled;
                 result.diagnostic = "fixture seam";
             } else {
                 result = TryReclaimLegacyBundledAdbServer(request);
@@ -1062,34 +1069,40 @@ void RequireAdbServer(const std::atomic<bool>* canceled, const std::string& want
     ObserveServerIdentity();
 }
 bool AdbRequest(QTcpSocket& socket, const QByteArray& service, int timeout = 3000,
-                const std::atomic<bool>* canceled = nullptr, const std::function<bool()>& allowed = {})
+                const std::atomic<bool>* canceled = nullptr, const std::function<bool()>& allowed = {},
+                bool* requestWritten = nullptr, Clock::time_point deadline = Clock::time_point::max())
 {
     if (service.size() > 65535) throw std::runtime_error("Invalid adb request");
     if (!Write(socket, QByteArray::number(service.size(), 16).rightJustified(4, '0') + service, canceled, allowed))
         return false;
-    const auto status = Read(socket, 4, timeout, canceled);
+    if (requestWritten) *requestWritten = true;
+    const auto status = Read(socket, 4, timeout, canceled, deadline);
     if (status == "FAIL") {
         bool valid = false;
-        const int size = Read(socket, 4, timeout, canceled).toInt(&valid, 16);
+        const int size = Read(socket, 4, timeout, canceled, deadline).toInt(&valid, 16);
         if (!valid || size < 0 || size > kControlLimit) throw std::runtime_error("Invalid adb error");
-        throw AdbFailReply(Read(socket, size, timeout, canceled).toStdString());
+        throw AdbFailReply(Read(socket, size, timeout, canceled, deadline).toStdString());
     }
     if (status != "OKAY") throw std::runtime_error("Invalid adb response");
     return true;
 }
 bool Transport(QTcpSocket& socket, const std::string& serial, const QByteArray& service,
                const std::atomic<bool>* canceled = nullptr, int timeout = 3000, std::uint64_t transportId = 0,
-               std::optional<std::uint16_t> port = std::nullopt, const std::function<bool()>& allowed = {})
+               std::optional<std::uint16_t> port = std::nullopt, const std::function<bool()>& allowed = {},
+               bool* requestWritten = nullptr, Clock::time_point deadline = Clock::time_point::max())
 {
+    const int connectMs = deadline == Clock::time_point::max() ? kHostConnectMs : static_cast<int>(
+        std::clamp(std::chrono::ceil<std::chrono::milliseconds>(deadline - Clock::now()).count(),
+                   std::chrono::milliseconds::rep{0}, std::chrono::milliseconds::rep{kHostConnectMs}));
     if (port) {
         socket.setReadBufferSize(32 * 1024 * 1024);
-        ConnectTo(socket, *port, kHostConnectMs, canceled);
+        ConnectTo(socket, *port, connectMs, canceled);
     } else {
-        Connect(socket, kHostConnectMs, canceled);
+        Connect(socket, connectMs, canceled);
     }
     AdbRequest(socket, transportId ? "host:transport-id:" + QByteArray::number(transportId) :
-        "host:transport:" + QByteArray::fromStdString(serial), timeout, canceled);
-    return AdbRequest(socket, service, timeout, canceled, allowed);
+        "host:transport:" + QByteArray::fromStdString(serial), timeout, canceled, {}, nullptr, deadline);
+    return AdbRequest(socket, service, timeout, canceled, allowed, requestWritten, deadline);
 }
 QByteArray ReadHostReplyBody(QTcpSocket& socket, const std::atomic<bool>* canceled)
 {
@@ -1172,7 +1185,8 @@ bool Command(QTcpSocket& socket, QJsonObject json, const std::atomic<bool>* canc
     return Write(socket, header + body, canceled, allowed);
 }
 QJsonObject ControlHello(QTcpSocket& socket, int timeout = 3000, bool hevcSupported = false,
-                         const std::atomic<bool>* canceled = nullptr, bool probe = false)
+                         const std::atomic<bool>* canceled = nullptr, bool probe = false,
+                         Clock::time_point deadline = Clock::time_point::max())
 {
     QJsonArray codecs{"avc"};
     if (hevcSupported) codecs.append("hevc");
@@ -1180,11 +1194,11 @@ QJsonObject ControlHello(QTcpSocket& socket, int timeout = 3000, bool hevcSuppor
                         {"maxPixelsPerSecond", 251658240}};
     if (probe) request.insert("probe", true);
     Hello(socket, 1, request, canceled);
-    const auto header = Read(socket, 8, timeout, canceled);
+    const auto header = Read(socket, 8, timeout, canceled, deadline);
     const auto size = qFromLittleEndian<quint32>(header.constData() + 4);
     if (size > kControlLimit) throw std::runtime_error("Oversized phone acknowledgement");
     const Packet packet{qFromLittleEndian<quint16>(header.constData()), qFromLittleEndian<quint16>(header.constData() + 2),
-        Read(socket, static_cast<int>(size), timeout, canceled)};
+        Read(socket, static_cast<int>(size), timeout, canceled, deadline)};
     const auto json = Json(packet);
     if (packet.type == 5 && !packet.flags)
         throw PhoneProtocolError(json["code"].toString().toStdString(), json["error"].toString().toStdString());
@@ -1892,7 +1906,7 @@ enum class CompanionLaunch { Started, NotInstalled, Dropped };
 CompanionLaunch LaunchCompanion(const std::vector<AdbDeviceEntry>& entries, const std::string& serial,
                                 std::uint64_t selectedId,
                                 const std::atomic<bool>* canceled, bool wake,
-                                const std::function<bool()>& stillWanted = {})
+                                const std::function<bool()>& stillWanted = {}, bool* activityWritten = nullptr)
 {
     // A unique serial survives transport ID reuse across server changes.
     // Duplicate serials require the ID of the selected transport.
@@ -1919,7 +1933,8 @@ CompanionLaunch LaunchCompanion(const std::vector<AdbDeviceEntry>& entries, cons
         "shell:am start -n com.okuflow.camera/.MainActivity --ez com.okuflow.camera.extra.HOST_LAUNCH true"}) {
         if (stillWanted && !stillWanted()) return CompanionLaunch::Dropped;
         QTcpSocket launcher;
-        if (!Transport(launcher, serial, command, canceled, 1000, transportId, std::nullopt, stillWanted))
+        if (activityWritten) *activityWritten = false;
+        if (!Transport(launcher, serial, command, canceled, 1000, transportId, std::nullopt, stillWanted, activityWritten))
             return CompanionLaunch::Dropped;
         const auto response = DrainShell(launcher, canceled, 2000);
         if (!response.contains("Error") && !response.contains("Exception")) return CompanionLaunch::Started;
@@ -2151,6 +2166,7 @@ struct DiscoveryFacts {
     PhoneServerProbe probe{PhoneServerProbe::Unknown};
     std::vector<AdbDeviceEntry> entries;
     AdbServerEndpoint listingServer;
+    std::optional<AdbListenerIdentity> ownedShadowListing;
     std::map<std::pair<std::string, std::uint64_t>, std::pair<PhoneCompanionProbe, std::string>> companions;
 };
 
@@ -2454,13 +2470,17 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
     case A::RestartOwnedServer: {
         std::shared_ptr<OwnedAdbServer> owned;
         { std::lock_guard lock(runtime.mutex); owned = runtime.ownedServer; }
-        // Beside a default the private server is restarted only when its own
-        // listing fails (it answers its version, not its listings); a blind
-        // private server beside the default is the takeover's business.
-        if (!owned || (o.shadowRunning && o.serverProbe != PhoneServerProbe::Unresponsive))
-            return "no owned server to restart";
+        if (!owned) return "no owned server to restart";
+        // A blind shadow belongs to the takeover. A responsive shadow that
+        // actually listed this stuck transport may restart its exact child.
+        std::optional<AdbListenerIdentity> expectedListener;
+        if (o.shadowRunning && o.serverProbe != PhoneServerProbe::Unresponsive) {
+            if (!entry || entry->state == PhoneAdbState::Device || !facts.ownedShadowListing)
+                return "no owned server to restart";
+            expectedListener = facts.ownedShadowListing;
+        }
         if (stale()) return dropped;
-        const auto result = owned->Restart(canceled, stillWanted);
+        const auto result = owned->Restart(canceled, stillWanted, expectedListener);
         using R = OwnedAdbServer::EnsureResult;
         if (result == R::Restarted || result == R::Launched) {
             return "owned server restarted on private port " + std::to_string(owned->Port().value_or(0));
@@ -3063,12 +3083,14 @@ std::vector<CameraDescriptor> PhoneCameraTransport::Enumerate(
             ObserveServerIdentity();
             const auto listingEndpoint = Endpoint();
             const bool ownServer = listingEndpoint.ownedByThisProcess;
+            bool ownShadow = false;
             {
                 // Repeated launch failures of OkuFlow's own adb are named.
                 // Only OkuFlow's own server answering ends them: another
                 // program's default answering (Running while borrowed) says
                 // nothing about OkuFlow's adb.exe.
                 auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
+                ownShadow = ownServer && runtime.shadowServer;
                 if (readiness == Result::LaunchFailed) ++runtime.launchFailures;
                 else if (readiness == Result::Launched || readiness == Result::Restarted ||
                          (readiness == Result::Running && ownServer))
@@ -3098,6 +3120,7 @@ std::vector<CameraDescriptor> PhoneCameraTransport::Enumerate(
                     if (!listingEndpoint.supported || !listingEndpoint.port)
                         throw AdbServerUnavailable("The local adb server is unavailable");
                     facts.listingServer = listingEndpoint;
+                    if (ownShadow) facts.ownedShadowListing = ListenerIdentity(listingEndpoint.port);
                     attached = ListUsbPhones(canceled, &facts.entries, listingEndpoint.port);
                 } else {
                     attached = ListUsbPhones(canceled, &facts.entries);
@@ -3391,43 +3414,58 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
             const auto hooks = Hooks();
             const auto connectionDeadline = Clock::now() + (hooks && hooks->sessionConnectBudgetForTest
                 ? *hooks->sessionConnectBudgetForTest : std::chrono::seconds(5));
-            bool launchedThisAttempt = false;
+            const auto launchRetryDeadline = (lastDecodedClock < 0 ? startupBudget : PhoneStartupBudget(Clock::now()))
+                .Deadline() - PhoneStartupBudget::DecodeReserve;
+            constexpr auto openCompanionError = "Open OkuFlow Camera, allow camera access and authorize USB debugging";
+            bool launchAttempted = false;
+            bool activityWritten = false;
             for (;;) {
                 CheckCanceled(&canceled_);
+                if (activityWritten && Clock::now() >= launchRetryDeadline)
+                    throw std::runtime_error(openCompanionError);
+                const auto attemptDeadline = activityWritten ? launchRetryDeadline : Clock::time_point::max();
                 bool endpointOpened = false;
                 try {
-                    Transport(control, descriptor.phoneSerial, "localabstract:okuflow_camera", &canceled_, 1000, descriptor.phoneTransportId);
+                    Transport(control, descriptor.phoneSerial, "localabstract:okuflow_camera", &canceled_, 1000,
+                              descriptor.phoneTransportId, std::nullopt, {}, nullptr, attemptDeadline);
                     endpointOpened = true;
-                    capabilities = ControlHello(control, 1500, hevcSupported, &canceled_);
-                    Transport(video, descriptor.phoneSerial, "localabstract:okuflow_camera", &canceled_, 1000, descriptor.phoneTransportId);
+                    capabilities = ControlHello(control, 1500, hevcSupported, &canceled_, false, attemptDeadline);
+                    Transport(video, descriptor.phoneSerial, "localabstract:okuflow_camera", &canceled_, 1000,
+                              descriptor.phoneTransportId, std::nullopt, {}, nullptr, attemptDeadline);
                     Hello(video, 2, {{"token", capabilities["token"]}}, &canceled_);
                     break;
                 } catch (const PhoneProtocolError& error) {
                     control.abort(); video.abort();
-                    if (error.code != "sessionBusy" || Clock::now() >= connectionDeadline) throw;
+                    const auto deadline = activityWritten ? launchRetryDeadline : connectionDeadline;
+                    if (error.code != "sessionBusy" || Clock::now() >= deadline) throw;
                 } catch (const std::exception&) {
                     control.abort(); video.abort(); CheckCanceled(&canceled_);
                     // An absent listener gets at most one launch per start
                     // attempt, taken from the shared per-event budget.
-                    if (!endpointOpened && !launchedThisAttempt && MayLaunch()) {
-                        launchedThisAttempt = true;
+                    if (!endpointOpened && !launchAttempted && MayLaunch()) {
+                        launchAttempted = true;
                         TracePhoneLink("session start: woke the phone and requested the companion " +
                                        PhoneSerialTag(descriptor.phoneSerial));
                         // Wake first: a launch on a sleeping phone would otherwise be spent
                         // behind the keyguard. A paused/blocked installed app keeps its
                         // own state; the legacy package is only tried when the Play
                         // activity is absent.
-                        const auto launch = LaunchCompanion(entries, descriptor.phoneSerial,
-                                                            descriptor.phoneTransportId, &canceled_, true);
+                        std::optional<CompanionLaunch> launch;
+                        try {
+                            launch = LaunchCompanion(entries, descriptor.phoneSerial, descriptor.phoneTransportId,
+                                                     &canceled_, true, {}, &activityWritten);
+                        } catch (const std::exception&) {
+                            CheckCanceled(&canceled_);
+                            // The activity can accept the request without
+                            // adb returning its status. Try control either way.
+                            if (!activityWritten) throw;
+                        }
                         if (launch == CompanionLaunch::NotInstalled)
                             throw std::runtime_error("Install OkuFlow Camera on the selected USB phone first");
-                        // The launch can spend the connection window. Give its listener
-                        // one immediate attempt inside Start's overall budget.
-                        if (launch == CompanionLaunch::Started && Clock::now() < startupBudget.Deadline())
-                            continue;
+                        if (activityWritten && Clock::now() < launchRetryDeadline) continue;
                     }
-                    if (Clock::now() >= connectionDeadline)
-                        throw std::runtime_error("Open OkuFlow Camera, allow camera access and authorize USB debugging");
+                    const auto deadline = activityWritten ? launchRetryDeadline : connectionDeadline;
+                    if (Clock::now() >= deadline) throw std::runtime_error(openCompanionError);
                 }
                 for (int i = 0; i < 5; ++i) { CheckCanceled(&canceled_); std::this_thread::sleep_for(std::chrono::milliseconds(20)); }
             }

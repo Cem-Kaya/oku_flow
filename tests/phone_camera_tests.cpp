@@ -211,6 +211,8 @@ public:
         beforeSerialSelectionReply = std::move(callback);
     }
     std::atomic<int> activityReplyDelayMs{0};
+    std::atomic<int> listenerOpenDelayMs{0};
+    std::atomic<bool> withholdActivityStatus{false}, listenerNeverOpens{false};
     void SetOnHostKill(std::function<void()> callback) {
         std::lock_guard lock(launchMutex);
         onHostKill = std::move(callback);
@@ -224,7 +226,7 @@ public:
     // second. Discovery's probes are answered as before.
     std::atomic<bool> streaming{false};
     std::vector<QByteArray> accessUnits;
-    std::atomic<int> videoPacketsSent{0};
+    std::atomic<int> videoPacketsSent{0}, listenerRefusals{0};
     // The companion's listener is closed (adbd refuses it at once).
     std::atomic<bool> companionRefuses{false};
     std::string problemCode;
@@ -438,18 +440,26 @@ private:
         if (next.startsWith("shell:am start")) {
             { std::lock_guard lock(launchMutex); launches.append(QString::fromUtf8(next)); }
             const auto delay = activityReplyDelayMs.load();
+            if (withholdActivityStatus) launchReadyAt = std::chrono::steady_clock::now();
             if (delay) std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+            if (withholdActivityStatus) return;
             Write(socket, "OKAY");
             if (launchMode == LaunchMode::Blocked) Write(socket, "Error: Activity start blocked");
             else if (launchMode == LaunchMode::Paused) Write(socket, "Starting: Intent");
             else if (launchMode == LaunchMode::Legacy && !next.contains("com.okuflow.camera/.MainActivity"))
                 Write(socket, "Error type 3\nError: Activity class does not exist.");
-            else { launchReady = true; Write(socket, "Starting: Intent"); }
+            else {
+                if (!listenerNeverOpens)
+                    launchReadyAt = std::chrono::steady_clock::now() + std::chrono::milliseconds(listenerOpenDelayMs.load());
+                Write(socket, "Starting: Intent");
+            }
             return;
         }
         if (next != "localabstract:okuflow_camera") return;
         const bool otherReadyDuplicate = duplicateSerial.load() == 3 && service == "host:transport-id:10";
-        if (companionRefuses.load() || (launchMode != LaunchMode::None && !launchReady && !otherReadyDuplicate)) {
+        if (companionRefuses.load() || (launchMode != LaunchMode::None &&
+            std::chrono::steady_clock::now() < launchReadyAt && !otherReadyDuplicate)) {
+            ++listenerRefusals;
             const QByteArray message("listener absent");
             Write(socket, "FAIL" + QByteArray::number(message.size(), 16).rightJustified(4, '0') + message);
             return;
@@ -496,7 +506,7 @@ private:
     LaunchMode launchMode;
     RecoveryMode recoveryMode;
     std::function<void()> healthProbeReceived;
-    bool launchReady{false};
+    std::chrono::steady_clock::time_point launchReadyAt{std::chrono::steady_clock::time_point::max()};
     std::mutex launchMutex;
     QStringList launches;
     QStringList services;
@@ -4407,7 +4417,13 @@ private slots:
         QVERIFY(listed);
         QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
     }
+    void legacyReclaimOfAListingHangNeedsAFreshSilentListing_data() {
+        QTest::addColumn<bool>("removeDuringReclaim");
+        QTest::newRow("fresh listing") << false;
+        QTest::newRow("removal during reclaim") << true;
+    }
     void legacyReclaimOfAListingHangNeedsAFreshSilentListing() {
+        QFETCH(bool, removeDuringReclaim);
         // Iteration 9 (A4): a confirmed LISTING hang (the version answers)
         // entered the hung branch and the legacy reclamation with no fresh
         // listing: an old bundled adb whose listings failed twice and that
@@ -4418,10 +4434,16 @@ private slots:
         FakePhoneAdb other(false, false, false, FakePhoneAdb::LaunchMode::None,
                            FakePhoneAdb::RecoveryMode::Healthy, false);
         other.listingMode.store(3); // Closed at once: a failed listing, without a hang's time-out.
-        auto reclaims = std::make_shared<std::atomic<int>>(0);
+        int reclaims = 0;
+        bool authorisedBefore = false, authorisedAfter = false;
         ScopedLinkHooks hooks(other.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {},
-                              300, [reclaims](okuflow::PhoneAdbTestHooks& h) {
-            h.legacyReclaimForTest = [reclaims] { ++*reclaims; };
+                              300, [&](okuflow::PhoneAdbTestHooks& h) {
+            h.legacyReclaimForTest = [&](const auto& stillWanted) {
+                ++reclaims;
+                authorisedBefore = stillWanted();
+                if (removeDuringReclaim) okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::DeviceRemoval);
+                authorisedAfter = stillWanted();
+            };
         });
         okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
         using Intent = okuflow::PhoneServerIntent;
@@ -4432,12 +4454,12 @@ private slots:
         QTest::qWait(350);
         okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, "abc", nullptr, Intent::PhoneUse);
         QVERIFY(!listed);
-        QCOMPARE(reclaims->load(), 0);
+        QCOMPARE(reclaims, 0);
         // It recovered and serves another device.
         other.listingMode.store(0);
         other.otherDevice.store(true);
         okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, "abc", nullptr, Intent::PhoneUse);
-        QCOMPARE(reclaims->load(), 0);
+        QCOMPARE(reclaims, 0);
         QVERIFY(listed);
         QVERIFY(!okuflow::OwnedAdbServerPort().has_value());
         // The counterpart: a fresh listing that stays silent lets it go on.
@@ -4447,7 +4469,10 @@ private slots:
         QTest::qWait(350);
         okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, "abc", nullptr, Intent::PhoneUse);
         okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, "abc", nullptr, Intent::PhoneUse);
-        QCOMPARE(reclaims->load(), 1);
+        QCOMPARE(reclaims, 1);
+        QVERIFY(authorisedBefore);
+        QCOMPARE(authorisedAfter, !removeDuringReclaim);
+        QCOMPARE(okuflow::OwnedAdbServerPort().has_value(), !removeDuringReclaim);
     }
     void listingHangOfOneListenerIsNotAnothers() {
         // Iteration 9 (A5): a listing hang confirmed for listener A, A exits
@@ -5038,6 +5063,76 @@ private slots:
         QCOMPARE(reports.back().decision.action, okuflow::PhoneLinkAction::RestartOwnedServer);
         QVERIFY(reports.back().actionResult.starts_with("owned server restarted on private port "));
     }
+    void offlineShadowRestartsOnlyWhenIdle_data() {
+        QTest::addColumn<bool>("occupied");
+        QTest::newRow("replace idle private child") << false;
+        QTest::newRow("defer with a registered session") << true;
+    }
+    void offlineShadowRestartsOnlyWhenIdle() {
+        QFETCH(bool, occupied);
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto offlinePath = directory.filePath(QStringLiteral("offline"));
+        { QFile offline(offlinePath); QVERIFY(offline.open(QIODevice::WriteOnly)); }
+        FakePhoneAdb borrowed(false, false, false, FakePhoneAdb::LaunchMode::None,
+                              FakePhoneAdb::RecoveryMode::Healthy, false);
+        borrowed.listEmpty.store(true);
+        ScopedLinkHooks hooks(borrowed.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(),
+                              {L"--fixture-device", L"--fixture-offline-file", offlinePath.toStdWString()}, 5000,
+                              [](okuflow::PhoneAdbTestHooks& h) {
+            h.linkPolicy->blindRestartCap = 1;
+            h.linkPolicy->restartRetryMs = 0;
+            h.transformAdbEntriesForTest = [](std::uint16_t, auto& entries) {
+                for (auto& entry : entries) entry.transportId = 0;
+            };
+        });
+
+        using A = okuflow::PhoneLinkAction;
+        const auto starts = LinkCycles(15, [](const auto& r) { return r.decision.action == A::StartShadowServer; });
+        QCOMPARE(starts.back().decision.action, A::StartShadowServer);
+        const auto original = okuflow::OwnedAdbServerPort();
+        QVERIFY(original);
+        QVERIFY(*original != borrowed.port);
+
+        // A starting session is registered but cannot open this offline transport.
+        // It must keep the same private child, including at the doctor's cap.
+        okuflow::PhoneCameraTransport session;
+        std::future<bool> opening;
+        auto stopSession = qScopeGuard([&] {
+            session.Cancel();
+            if (opening.valid()) opening.wait();
+            session.Stop();
+        });
+        if (occupied) {
+            opening = std::async(std::launch::async, [&] {
+                return session.Start(FixturePhone(), nullptr, [](okuflow::MediaFrame&&) {}, {});
+            });
+            QTRY_VERIFY_WITH_TIMEOUT(okuflow::ReadPhoneSessionStateForTest().registered, 3000);
+        }
+
+        // At cap 1, another reservation after the first deferral can only
+        // happen if the executor gave the first back. Zero retry spacing
+        // lets both decisions run during the same registration.
+        const auto reports = LinkCycles(1);
+        const auto& report = reports.back();
+        QVERIFY(report.observation.shadowRunning);
+        QCOMPARE(report.observation.serverProbe, okuflow::PhoneServerProbe::Responsive);
+        QCOMPARE(report.observation.phoneState, okuflow::PhoneAdbState::Offline);
+        QCOMPARE(report.decision.action, A::RestartOwnedServer);
+        if (occupied) {
+            QCOMPARE(report.actionResult, "owned restart deferred: a live session uses it");
+            const auto next = LinkCycles(1);
+            QCOMPARE(next.back().decision.action, A::RestartOwnedServer);
+            QCOMPARE(next.back().actionResult, report.actionResult);
+            QCOMPARE(okuflow::OwnedAdbServerPort(), original);
+        } else {
+            QVERIFY2(report.actionResult.starts_with("owned server restarted on private port "), report.actionResult.c_str());
+            const auto replacement = okuflow::OwnedAdbServerPort();
+            QVERIFY(replacement);
+            QVERIFY(replacement != original);
+        }
+        QCOMPARE(borrowed.ServiceCount("host:kill"), 0);
+    }
     void stalledReconnectChecksTheAttachmentAfterConnect() {
         FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::None,
                             FakePhoneAdb::RecoveryMode::SelectionStalled, false);
@@ -5295,6 +5390,50 @@ private slots:
             selectById, companionSocket, // Video connection.
         };
         QCOMPARE(server.Services(), expected);
+    }
+    void sessionRetriesAfterTheActivityRequestWasWritten_data() {
+        QTest::addColumn<int>("replyDelayMs");
+        QTest::addColumn<int>("listenerDelayMs");
+        QTest::addColumn<bool>("neverOpens");
+        QTest::newRow("listener opens after several refusals") << 0 << 550 << false;
+        QTest::newRow("activity status withheld past adb timeout") << 1300 << 0 << false;
+        QTest::newRow("listener stays closed") << 0 << 0 << true;
+    }
+    void sessionRetriesAfterTheActivityRequestWasWritten() {
+        QFETCH(int, replyDelayMs);
+        QFETCH(int, listenerDelayMs);
+        QFETCH(bool, neverOpens);
+        using Clock = std::chrono::steady_clock;
+        FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::Play,
+                            FakePhoneAdb::RecoveryMode::Healthy, false);
+        server.activityReplyDelayMs.store(replyDelayMs);
+        server.withholdActivityStatus = replyDelayMs != 0;
+        server.listenerOpenDelayMs = listenerDelayMs;
+        server.listenerNeverOpens = neverOpens;
+        ScopedLinkHooks hooks(server.port, okuflow::PhoneAdbInterface::Present, {}, {}, 5000,
+                              [](okuflow::PhoneAdbTestHooks& h) {
+            h.sessionConnectBudgetForTest = std::chrono::milliseconds(80);
+        });
+        server.accessUnits = H264AccessUnits(QFINDTESTDATA("data/phone-camera.h264"));
+        QCOMPARE(server.accessUnits.size(), size_t{4});
+        server.streaming.store(true);
+        ScopedMediaFoundation media;
+        QVERIFY(media.com && media.mf);
+        okuflow::PhoneCameraTransport transport;
+        const auto started = Clock::now();
+        const bool opened = transport.Start(FixturePhone(), nullptr, [](okuflow::MediaFrame&&) {}, {});
+        const auto elapsed = Clock::now() - started;
+        transport.Stop();
+
+        QCOMPARE(server.Launches().size(), 1);
+        if (neverOpens) {
+            QVERIFY(!opened);
+            QCOMPARE(transport.Error(), "Open OkuFlow Camera, allow camera access and authorize USB debugging");
+            QVERIFY(elapsed >= okuflow::PhoneStartupBudget::Timeout - okuflow::PhoneStartupBudget::DecodeReserve);
+        } else {
+            QVERIFY2(opened, transport.Error().c_str());
+            if (listenerDelayMs) QVERIFY(server.listenerRefusals.load() >= 3);
+        }
     }
     void localAdbOverridesAreRespected() {
         auto endpoint = okuflow::ParseAdbServerEndpoint("", "", "");

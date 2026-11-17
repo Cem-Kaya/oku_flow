@@ -256,6 +256,37 @@ private slots:
             QCOMPARE(next.action, i + 1 == doctor.Policy().blindRestartCap ? A::WaitForUser : A::Relist);
         }
     }
+    void borrowedOfflineWithoutIdWaitsBeforeShadowing()
+    {
+        PhoneLinkDoctor doctor;
+        const auto offline = With([](auto& o) {
+            o.server = PhoneServerKind::BorrowedDefault;
+            o.phoneState = PhoneAdbState::Offline;
+            o.hasTransportId = false;
+        });
+        doctor.OnEvent(PhoneLinkEvent::Resume, 0);
+        const auto grace = doctor.Policy().stuckAfterReconnectMs;
+        QCOMPARE(doctor.Decide(offline, 0).action, A::Relist);
+        QCOMPARE(doctor.Decide(offline, grace - 1).action, A::Relist);
+        QCOMPARE(doctor.Decide(offline, grace).action, A::StartShadowServer);
+    }
+    void ownedOfflinePrefersASecondReconnectOnlyWhenDue_data()
+    {
+        QTest::addColumn<bool>("reconnectDue");
+        QTest::newRow("second reconnect due") << true;
+        QTest::newRow("second reconnect still cooling down") << false;
+    }
+    void ownedOfflinePrefersASecondReconnectOnlyWhenDue()
+    {
+        QFETCH(bool, reconnectDue);
+        PhoneLinkPolicy policy;
+        policy.reconnectRetryMs = policy.stuckAfterReconnectMs + (reconnectDue ? 0 : 1);
+        PhoneLinkDoctor doctor(policy);
+        const auto offline = With([](auto& o) { o.phoneState = PhoneAdbState::Offline; });
+        QCOMPARE(doctor.Decide(offline, 0).action, A::ReconnectTransport);
+        QCOMPARE(doctor.Decide(offline, policy.stuckAfterReconnectMs).action,
+                 reconnectDue ? A::ReconnectTransport : A::RestartOwnedServer);
+    }
     void offlineThatNeedsAServerRestart()
     {
         PhoneLinkDoctor doctor;
@@ -392,6 +423,39 @@ private slots:
         // An event (re-plug) renews the reconnects.
         doctor.OnEvent(PhoneLinkEvent::DeviceArrival, 61000);
         QCOMPARE(int(doctor.Decide(offline, 61000).action), int(A::ReconnectTransport));
+    }
+    void blindBorrowedDefaultNamesTheSiblingAtTakeoverCaps_data()
+    {
+        QTest::addColumn<int>("cap");
+        QTest::newRow("hand-over cap") << 0;
+        QTest::newRow("exit request cap") << 1;
+        QTest::newRow("termination cap") << 2;
+    }
+    void blindBorrowedDefaultNamesTheSiblingAtTakeoverCaps()
+    {
+        QFETCH(int, cap);
+        PhoneLinkPolicy policy;
+        policy.blindGraceMs = policy.takeoverGraceMs = policy.hostKillWaitMs = 0;
+        if (cap == 0) policy.handOverCap = 0;
+        if (cap == 1) policy.askExitCap = 0;
+        if (cap == 2) policy.terminateCap = 0;
+        PhoneLinkDoctor doctor(policy);
+        auto blind = Blind(PhoneServerKind::BorrowedDefault);
+        blind.otherInstanceRunning = true;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        auto decision = doctor.Decide(blind, 0);
+        if (cap > 0) {
+            QCOMPARE(decision.action, A::StartShadowServer);
+            blind.server = PhoneServerKind::Owned;
+            blind.shadowRunning = true;
+            decision = doctor.Decide(blind, 1);
+        }
+        if (cap == 2) {
+            QCOMPARE(decision.action, A::AskDefaultServerToExit);
+            decision = doctor.Decide(blind, 2);
+        }
+        QCOMPARE(decision.action, A::WaitForUser);
+        QCOMPARE(decision.diagnosis, D::OtherInstanceHoldsPhone);
     }
     void defaultThatAlternatelyListsAndLosesThePhoneIsNamed()
     {

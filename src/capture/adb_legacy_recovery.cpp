@@ -1492,6 +1492,7 @@ LegacyAdbRecoveryResult TryReclaimLegacyBundledAdbServer(
     }
     outcome.hostKillDelivered = killDelivered;
     if (killDelivered) {
+        if (policy.afterHostKillDeliveredForTest) policy.afterHostKillDeliveredForTest();
         switch (WaitForExit(target.process.handle, policy.hostKillExitWait, request, true)) {
         case ExitWait::Exited:
             outcome.status = Status::Recovered;

@@ -138,7 +138,9 @@ after 15 s, then 60 s, at most three times per episode. A windowed sibling
 does not block these restarts. A busy companion can identify the sibling
 immediately. If the phone is still missing when owned repair reaches its
 cap, the doctor uses the sibling message when a sibling and the USB interface
-are present, or the re-plug message otherwise.
+are present, or the re-plug message otherwise. The borrowed-default takeover
+also uses the sibling message at its hand-over, exit-request and termination
+caps when the interface is present and the phone remains unlisted.
 An owned server that answers its version probes while its device listing fails (time-out, closed socket, invalid reply, `FAIL` to
 both listing forms) gets the same restart rung and cap after the 5 s grace and
 ends in the re-plug sentence: upstream adb answers `host:version` without the
@@ -167,9 +169,10 @@ serves no other device and does not list the phone ready, unauthorized or
 authorizing, and after the PID, creation-time and `adb.exe` image checks. A
 borrowed default that keeps the phone offline, connecting, stalled or without
 permissions after two targeted reconnects is treated as blind (it holds the
-interface without serving it). A hang confirmed only by version probes gets
-one short listing attempt before anything else: any answer keeps the server
-and restarts the confirmation. If its listener remains after 2 s, or it
+interface without serving it). If its listing omits the transport ID, the
+doctor waits the existing stuck grace before starting a private server.
+A hang confirmed only by version probes gets one short listing attempt first.
+Any answer keeps the server and restarts the confirmation. If its listener remains after 2 s, or it
 cannot answer at all, `TryStopDefaultAdbServer` terminates exactly the process
 behind that listener (the IPv4 `127.0.0.1` row of the port; when there is none,
 its any-address row, `0.0.0.0` or a dual-stack `::`, as an adb started with
@@ -263,7 +266,8 @@ does not reach the doctor at all, so it reserves nothing of the episode; the
 application advances the intent generation only when the intent changed
 (computed after the change, before a pick's event), so a pick of the phone
 already chosen revokes nothing. A new link episode also revokes a pending
-default-server stop before its next effect. A legacy reclamation
+default-server stop or legacy reclaim before its next effect, including
+forced termination after the raw host-kill wait. A legacy reclamation
 entered on a listing hang lists the default once more first: an answer ends
 the hang and nothing is reclaimed, an adb `FAIL` keeps the hang and forbids
 the reclamation in that call. At the hand-over cap a listing-hung default is
@@ -330,9 +334,11 @@ observed port and take a fresh listing there before writing. The listing
 must match the USB serial, transport ID and state. The write checks that
 the port and server kind are still current and the source still authorizes it.
 An ID-less offline entry on OkuFlow's own server goes directly to the
-bounded owned restart rung. An idle
-preferred phone can receive the same recovery during background discovery while a
-fallback webcam is active. Ordinary browsing, explicit webcam intent, coded
+bounded owned restart rung, including a responsive private server beside
+a blind default. The restart rechecks the child and listener identity from
+that listing. A registered session defers it and gives back the reservation
+while retaining its retry spacing. An idle preferred phone can receive the
+same recovery during background discovery while a fallback webcam is active. Ordinary browsing, explicit webcam intent, coded
 phone problems, busy sessions and live/starting phone ownership do not trigger
 it. A successful request still needs subsequent discovery and decoded frames.
 Other adb clients using that same phone lose their transport during a targeted
@@ -342,8 +348,10 @@ use serial selection when the listing shows a unique serial. If the serial
 appears twice, they select the ready entry by its transport ID. A second
 ready transport with the same serial vetoes a stop of the shared default.
 The discovery ladder checks source authority at the shell write, after
-transport selection. Session startup tries control once immediately after
-a successful activity launch, inside the overall startup budget.
+transport selection. After writing the activity request, the same session
+start retries the control connection at its existing pace even if adb never
+returns the service status. Retries use the remaining startup budget up to its
+camera/decode reserve.
 
 A globally hung server cannot acknowledge this transport request. The automatic
 server recovery above handles OkuFlow-owned or proven legacy support and, under

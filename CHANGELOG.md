@@ -4,14 +4,18 @@
 
 - USB reconnects require a fresh matching listing on the observed server.
   An offline phone listed without a transport ID goes directly to the
-  bounded restart of OkuFlow's own server.
+  bounded restart of OkuFlow's own server, including when it runs beside a
+  blind default. An ID-less offline phone on a borrowed default gets time to
+  recover before OkuFlow starts a private server.
 - Wake and launch handle duplicate serials after USB re-enumeration.
   A second ready transport also keeps a shared server from being stopped.
   Changing source during transport selection cancels the shell command.
-  A slow successful launch still gets a control connection attempt.
-- A phone link event cancels a pending stop of the shared server. Repeated
-  live-session vetoes reach the existing stop limit. A second OkuFlow window
-  allows the private server's bounded repair to run.
+  Camera startup keeps retrying the companion connection after it sends the
+  activity request, even if the launch status goes unanswered.
+- A phone link event cancels a pending stop of the shared server, including
+  legacy bundle recovery. Repeated live-session vetoes reach the existing
+  stop limit. If the phone remains unlisted after a bounded takeover, the
+  app identifies a second OkuFlow window when present.
   Owned servers verify listener ownership at readiness and before an idle
   shadow hands back. Children that fail readiness can restart on a fresh port.
 - Phone-link traces record fixed companion problem codes. An absent configured

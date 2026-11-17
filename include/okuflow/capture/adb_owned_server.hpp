@@ -129,9 +129,10 @@ public:
     // stop for a request that is no longer wanted (result Canceled).
     EnsureResult EnsureRunning(const std::atomic<bool>* canceled, bool allowLifecycleEffects = true,
                                std::function<bool()> stillWanted = {});
-    // Doctor rung 3: restart a responsive but blind owned child now. Live
-    // sessions and cancellation win; the doctor's budget paces it.
-    EnsureResult Restart(const std::atomic<bool>* canceled, std::function<bool()> stillWanted = {});
+    // Restart an idle owned child on the doctor's budget. A responsive
+    // shadow with a stuck phone must still be the listener that listed it.
+    EnsureResult Restart(const std::atomic<bool>* canceled, std::function<bool()> stillWanted = {},
+                         std::optional<AdbListenerIdentity> expectedListener = std::nullopt);
     // Events clear the restart cooldown and its doubling. Lock-free: safe on
     // the UI thread while a worker holds the manager through a launch; the
     // request is applied by the next EnsureRunning/Restart.

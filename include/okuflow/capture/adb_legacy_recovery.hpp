@@ -143,6 +143,8 @@ struct LegacyAdbRecoveryPolicy {
     // succeeds, before the mandatory post-connect revalidation and before
     // any byte is sent. Production leaves it empty.
     std::function<void()> afterHostKillConnectForTest;
+    // Runs after host:kill was sent, at the start of the exit wait.
+    std::function<void()> afterHostKillDeliveredForTest;
     // Test seam only: when non-empty, the sibling-instance scan considers
     // only candidate processes whose canonical image lives under this
     // directory, so private fixtures can run beside a real owner instance

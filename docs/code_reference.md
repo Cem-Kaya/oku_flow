@@ -1859,7 +1859,9 @@ so metadata generation cannot silently accept an incomplete copy.
   `CreateOwnedAdbServer` wires exact hidden children, emulator suppression,
   native listener validation and runtime occupancy. `Stop` sets an atomic
   request before waiting for the manager lock, interrupting the next polling
-  step. Restarts pick a fresh port rather than reusing accepted connections.
+  step. Restarts pick a fresh port. For a responsive private server beside
+  the default, `OwnedAdbServer::Restart` checks the listed listener's
+  identity against the exact child under the manager lock, before the stop.
   `ShutdownOwnedAdbServer` stops only this manager's child after discovery and
   capture teardown; `OwnedAdbServerPort` returns its live private port. Nothing
   persists PID ownership or runs global adb client kill commands.
@@ -1867,7 +1869,9 @@ so metadata generation cannot silently accept an incomplete copy.
 - `TryReclaimLegacyBundledAdbServer` in `capture/adb_legacy_recovery.hpp/.cpp`
   deliberately adopts only a confirmed-hung reviewed legacy bundle server.
   `LegacyAdbRecoveryRequest` supplies phone intent, no-session snapshot/live
-  callback and cancel/shutdown latches. `LegacyAdbProvenanceExpectations` pins
+  callback, source and link-episode authority, and cancel/shutdown latches.
+  The reclaim checks that authority during its host-kill exit wait and before
+  forced termination. `LegacyAdbProvenanceExpectations` pins
   the manifest, actual adb entry hash, canonical flat/nested layout and launcher
   product metadata or reviewed launcher SHA. `LegacyAdbRecoveryPolicy` bounds
   mutex/connect/exit waits; test-only callbacks and sibling scan scope isolate
@@ -1930,8 +1934,13 @@ so metadata generation cannot silently accept an incomplete copy.
   using `FindLoopbackListener` in `adb_listener.hpp`, shared with the stop
   helper. They check that identity after listing, after a stall re-check and
   before the stop helper.
-  A new doctor episode cancels a pending ask or termination at the same
-  authority checks used for a source change. The exact listener checks still apply.
+  A new doctor episode cancels a pending ask, termination or legacy reclaim
+  at the same authority checks used for a source change. At the takeover
+  caps, the doctor names a windowed sibling if the ADB interface is present
+  and the wanted phone is unlisted. An ID-less offline listing from a borrowed
+  default waits `stuckAfterReconnectMs` before starting a private server.
+  An owned offline listing can restart the idle child beside a default.
+  The executor gives back the restart reservation when the manager defers it.
   `ObserveChildReadinessLocked` requires a responsive host, a live child and
   the child's listener ownership to admit readiness. Later host probes trust
   that live child on its own port. A child with unverified readiness after
@@ -2028,8 +2037,10 @@ so metadata generation cannot silently accept an incomplete copy.
   write reports `Dropped`.
   `ControlHello` accepts a token-free `probe:true` ACK,
   supports older tokened ACKs and reads coded ERROR packets. Real hello and
-  video binding share the connection window, with one immediate control
-  attempt after a successful launch inside `PhoneStartupBudget`.
+  video binding share the connection window. `LaunchCompanion` can report
+  that `AdbRequest` wrote the activity service, even if the status read
+  fails. `PhoneCameraTransport::Run` then paces control retries using
+  `PhoneStartupBudget::Deadline() - DecodeReserve` as the cutoff.
   `ownedServerExecutable` / `ownedServerArguments` opt into the private fake
   process fixture, with the hook port standing in for 5037. `OccupiedPhone`
   increments/decrements per-serial counts so overlapping sessions remain

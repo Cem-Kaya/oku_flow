@@ -247,6 +247,8 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
     const bool owned = o.server == PhoneServerKind::Owned;
     const bool responsive = o.serverProbe == PhoneServerProbe::Responsive;
     const bool interfacePresent = o.adbInterface == PhoneAdbInterface::Present;
+    const auto takeoverCapDiagnosis = o.otherInstanceRunning && interfacePresent && o.phoneState == PhoneAdbState::NotListed
+        ? D::OtherInstanceHoldsPhone : D::OtherProgramHoldsPhone;
     // Terminating a default-port adb: confirmed, stoppable, the Windows ADB
     // interface present (a slow but healthy server with no phone attached is
     // never killed), and a bounded number of times per episode.
@@ -266,7 +268,7 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         // terminates after an ask, the hung branch without one).
         const int aborted = hostKillSent ? abortedTakeoverStops_ : abortedHungStops_;
         if (terminate_.attempts >= policy_.terminateCap || aborted >= policy_.abortedStopCap) {
-            *raised = D::OtherProgramHoldsPhone;
+            *raised = hostKillSent ? takeoverCapDiagnosis : D::OtherProgramHoldsPhone;
             return A::WaitForUser;
         }
         if (!terminate_.Allowed(nowMs)) return A::Relist;
@@ -293,7 +295,7 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
             Reserve(shadow_, nowMs, policy_.restartCeilingMs, policy_.restartCeilingMs);
             return A::StartShadowServer;
         }
-        if (handOvers_ >= policy_.handOverCap) { *raised = D::OtherProgramHoldsPhone; return A::WaitForUser; }
+        if (handOvers_ >= policy_.handOverCap) { *raised = takeoverCapDiagnosis; return A::WaitForUser; }
         if (!shadow_.Allowed(nowMs)) return A::Relist;
         Reserve(shadow_, nowMs, policy_.restartRetryMs, policy_.restartCeilingMs);
         ++handOvers_;
@@ -419,7 +421,7 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
             if (!interfacePresent) { *raised = D::ReplugCable; return A::WaitForUser; }
             if (askedExitMs_ < 0) {
                 if (askExit_.attempts >= policy_.askExitCap || abortedTakeoverStops_ >= policy_.abortedStopCap) {
-                    *raised = D::OtherProgramHoldsPhone;
+                    *raised = takeoverCapDiagnosis;
                     return A::WaitForUser;
                 }
                 if (!askExit_.Allowed(nowMs)) return A::Relist;
@@ -476,6 +478,7 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
             // without serving it: the takeover rungs, unless it serves
             // another device.
             if (o.defaultHasOtherDevices) { *raised = D::OtherProgramHoldsPhone; return A::WaitForUser; }
+            if (!o.hasTransportId && stuckFor < policy_.stuckAfterReconnectMs) return A::Relist;
             return shadow();
         }
         // Once the restarts are spent the re-plug sentence stands until an
@@ -485,24 +488,17 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         // With no transport ID there is no targeted reconnect to try first.
         const bool restartDue = restart_.Allowed(nowMs) && (!o.hasTransportId ||
             (lastReconnectMs_ >= 0 && nowMs - lastReconnectMs_ >= policy_.stuckAfterReconnectMs));
-        if (restartDue && (!o.hasTransportId || reconnect_.attempts >= 2)) {
-            if (restart_.attempts >= policy_.blindRestartCap) { *raised = D::ReplugCable; return A::WaitForUser; }
+        const bool reconnectDue = o.hasTransportId && reconnect_.Allowed(nowMs);
+        if (restartDue && (!reconnectDue || reconnect_.attempts >= 2)) {
             Reserve(restart_, nowMs, policy_.restartRetryMs, policy_.restartCeilingMs);
             lastReconnectMs_ = -1;
             return A::RestartOwnedServer;
         }
-        if (o.hasTransportId && reconnect_.Allowed(nowMs)) {
+        if (reconnectDue) {
             Reserve(reconnect_, nowMs, policy_.reconnectRetryMs, policy_.reconnectCeilingMs);
             lastReconnectMs_ = nowMs;
             return A::ReconnectTransport;
         }
-        if (restartDue) {
-            if (restart_.attempts >= policy_.blindRestartCap) { *raised = D::ReplugCable; return A::WaitForUser; }
-            Reserve(restart_, nowMs, policy_.restartRetryMs, policy_.restartCeilingMs);
-            lastReconnectMs_ = -1;
-            return A::RestartOwnedServer;
-        }
-        if (owned && restart_.attempts >= policy_.blindRestartCap) { *raised = D::ReplugCable; return A::WaitForUser; }
         return A::Relist;
     }
     case D::PhoneLocked:

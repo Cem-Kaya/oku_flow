@@ -377,7 +377,8 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::EnsureRunning(const std::atomic<boo
 }
 
 OwnedAdbServer::EnsureResult OwnedAdbServer::Restart(const std::atomic<bool>* canceled,
-                                                   std::function<bool()> stillWanted)
+                                                   std::function<bool()> stillWanted,
+                                                   std::optional<AdbListenerIdentity> expectedListener)
 {
     std::unique_lock lock(mutex_, std::defer_lock);
     while (!lock.try_lock_for(std::chrono::milliseconds(20))) {
@@ -386,6 +387,8 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::Restart(const std::atomic<bool>* ca
     const WantedScope scope(this, std::move(stillWanted));
     if (stopped_) return EnsureResult::Stopped;
     if (Halted(canceled)) return EnsureResult::Canceled;
+    if (expectedListener && ListeningIdentity(expectedListener->port) != expectedListener)
+        return EnsureResult::Canceled;
     ApplyBudgetResetLocked();
     if (hasLiveSessions_ && hasLiveSessions_()) return EnsureResult::RestartDeferredLiveSession;
     if (Halted(canceled)) return EnsureResult::Canceled;

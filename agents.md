@@ -504,7 +504,13 @@ aligned with the project goals.
   and server kind. Open the reconnect socket before the final listing,
   require the same USB serial, transport ID and state, and check authority
   at emission. An ID-less offline entry on the owned server goes to the
-  bounded restart rung. A live veto counts even if the session ends before
+  bounded restart rung. A responsive private server beside a blind default
+  can take that rung only on its own listing of the stuck phone. Match the
+  listener to the held child again under the manager lock. Test replacement
+  and reservation give-back with an actual registered session. Wait the
+  stuck grace when a borrowed default reports an offline phone without an ID.
+  Name the sibling at the takeover caps if the interface is present and the
+  phone remains unlisted. A live veto counts even if the session ends before
   the result is handled. Check reservation give-backs by retrying without an
   event, and test cleared timestamps directly so expiry cannot mask a failure.
   Keep companion-provided text out of traces with fixed protocol tokens.
@@ -617,7 +623,11 @@ aligned with the project goals.
   trace line. Do not reintroduce "once per transport" launch budgets or
   minute-long holds; the owner's complaint was stacked 30 s / 60 s waits.
   Camera starts take launches from the doctor's per-event budget
-  (`ReserveLaunch`), never from a timer of their own. A listener refusal
+  (`ReserveLaunch`), never from a timer of their own. Track whether the
+  activity request was written separately from its status. Keep control
+  retries in the same camera start within the startup budget's reserve.
+  Carry source and episode authority through the legacy reclaim's host-kill
+  wait and final termination. A listener refusal
   within `launchSettleMs` of OkuFlow's own launch holds nothing, and a hold
   ends when the app process is gone: relaunched at once the first time in an
   episode (spent only by a decision that actually launches), later at `launchPeriodicMs` after the last launch (Pause survives
