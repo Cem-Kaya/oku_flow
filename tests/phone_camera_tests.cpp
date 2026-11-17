@@ -1538,6 +1538,39 @@ private slots:
             okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, {}, nullptr, Intent::PhoneUse);
         QVERIFY(okuflow::OwnedAdbServerPort().has_value());
     }
+    void ownHandBackCountedAfterAnEventIsDropped() {
+        // Iteration 7 (4): the transport's own hand-back of the private
+        // server it started beside a hung default, with an event raised while
+        // that server is retired (the mutex is released around Stop()). The
+        // hand-back belongs to the old episode and is not counted in the new
+        // one: with a hand-over cap of one, a default that hangs again still
+        // gets a private server beside it.
+        FakePhoneAdb borrowed(false, false, false, FakePhoneAdb::LaunchMode::None,
+                              FakePhoneAdb::RecoveryMode::ServerStalled, false);
+        auto fired = std::make_shared<std::atomic<bool>>(false);
+        ScopedLinkHooks hooks(borrowed.port, okuflow::PhoneAdbInterface::Present,
+                              OwnedChildFixturePath().toStdWString(), {}, 0, [fired](okuflow::PhoneAdbTestHooks& h) {
+            h.linkPolicy->handOverCap = 1;
+            h.afterPrivateServerRetiredForTest = [fired] {
+                if (!fired->exchange(true)) okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::ManualPick);
+            };
+        });
+        using Intent = okuflow::PhoneServerIntent;
+        bool listed = false;
+        for (int attempt = 0; attempt < 3 && !okuflow::OwnedAdbServerPort(); ++attempt)
+            okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, {}, nullptr, Intent::PhoneUse);
+        QVERIFY(okuflow::OwnedAdbServerPort().has_value()); // Beside the hung default: the cap's one start.
+        borrowed.hostUnresponsive.store(false);
+        borrowed.deviceStalled.store(false);
+        for (int attempt = 0; attempt < 3 && okuflow::OwnedAdbServerPort(); ++attempt)
+            okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, {}, nullptr, Intent::PhoneUse);
+        QVERIFY(!okuflow::OwnedAdbServerPort().has_value()); // The transport's own hand-back...
+        QVERIFY(fired->load()); // ...with an event in between.
+        borrowed.hostUnresponsive.store(true); // Hangs again.
+        for (int attempt = 0; attempt < 6 && !okuflow::OwnedAdbServerPort(); ++attempt)
+            okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, {}, nullptr, Intent::PhoneUse);
+        QVERIFY(okuflow::OwnedAdbServerPort().has_value());
+    }
     void privateServerStartThatCannotHappenIsNotCharged() {
         // Iteration 5 (3): beside a hung default, a start that cannot happen
         // (no executable yet) does not count toward the hand-over cap. With

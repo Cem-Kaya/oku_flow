@@ -1149,6 +1149,10 @@ which closes its listener before it answers the ask's pre-ask listing
 one aborted stop per episode, another blind default that appears beside
 OkuFlow's server is still asked to exit. Doctor row
 `askThatFindsTheDefaultGoneIsGivenBackUncounted`.
+`ownHandBackCountedAfterAnEventIsDropped`: the transport's own hand-back of the
+private server it started beside a hung default, with an event raised through
+`afterPrivateServerRetiredForTest` (cap 1); the default that hangs again still
+gets a private server.
 `phone_link_text` (headless) checks one sentence per diagnosis and that every
 sentence is translated in all 24 catalogs. The native slot
 `phoneSentenceIsShownAndSpokenForEveryDiagnosis` delivers every verdict
