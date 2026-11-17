@@ -9,8 +9,9 @@
   A second ready transport also keeps a shared server from being stopped.
   Changing source during transport selection cancels the shell command.
   A slow successful launch still gets a control connection attempt.
-- A phone link event cancels a pending stop of the shared server. A second
-  OkuFlow window allows the private server's bounded repair to run.
+- A phone link event cancels a pending stop of the shared server. Repeated
+  live-session vetoes reach the existing stop limit. A second OkuFlow window
+  allows the private server's bounded repair to run.
   Owned servers verify listener ownership at readiness and before an idle
   shadow hands back. Children that fail readiness can restart on a fresh port.
 - Phone-link traces record fixed companion problem codes. An absent configured

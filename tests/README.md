@@ -1167,7 +1167,7 @@ returned). The back-to-back session row asserts the cleared timestamp and the
 silent session fixture uses an extended connect budget. Round 11 adds
 `defaultStopKeepsAListenerThatReplacedTheOneListed` (ask and termination),
 `offlineReconnectUsesTheObservedTransport` (ready, endpoint change and changed
-USB serial or ID), and `companionProblemTraceUsesOnlyFixedCodes` (probe and hello error).
+USB serial or ID and a server-kind change during the fresh listing), and `companionProblemTraceUsesOnlyFixedCodes` (probe and hello error).
 The round 11 follow-up checks two listener owners at the first pre-stop lookup
 for both ask and termination (`defaultStopRefusesAmbiguousListingOwner`).
 The offline table checks transitions to unauthorized, connecting and ready,
@@ -1187,8 +1187,9 @@ an old ID. `ladderLaunchOnReadableBorrowedDefault` checks one discovery
 listing. `ladderLaunchUsesTheReadyDuplicateTransport` and
 `sessionLaunchKeepsTheExistingAdbRequests` cover both duplicate orders,
 one wake and one launch by ID, and the unique-serial request sequence.
-`anotherReadyTransportWithTheSameSerialVetoesDefaultStop` covers the
-pre-stop listing. `sourceChangeDuringSelectionDropsTheShellWrite` advances
+The ladder also keeps each ready transport's companion status separate.
+`anotherReadyTransportWithTheSameSerialVetoesDefaultStop` adds a ready
+duplicate at the pre-stop listing of an otherwise stoppable fixture child. `sourceChangeDuringSelectionDropsTheShellWrite` advances
 source generation before the fake acknowledges transport selection.
 The slow activity row in `sessionLaunchKeepsTheExistingAdbRequests` checks
 control and streaming after the connection window elapsed.

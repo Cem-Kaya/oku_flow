@@ -3368,30 +3368,27 @@ private slots:
         QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::AskDefaultServerToExit));
     }
     void anotherReadyTransportWithTheSameSerialVetoesDefaultStop() {
-        DefaultAdbFixture decoy({});
-        QVERIFY(decoy.copied && !decoy.Exited());
-        FakePhoneAdb borrowed(false, false, false, FakePhoneAdb::LaunchMode::None,
-                              FakePhoneAdb::RecoveryMode::Healthy, false);
-        borrowed.listEmpty.store(true);
-        const auto pid = decoy.child->ProcessId();
-        okuflow::SetTcpListenerRowsTransformForTest([&](std::vector<okuflow::TcpListenerRow>& rows) {
-            for (auto& row : rows) if (row.port == borrowed.port) row.processId = pid;
-        });
-        auto restore = qScopeGuard([] { okuflow::SetTcpListenerRowsTransformForTest({}); });
+        DefaultAdbFixture borrowed({L"--fixture-device", L"--fixture-stalled-shell", L"--fixture-exit-on-kill"});
+        QVERIFY(borrowed.copied && !borrowed.Exited());
+        bool addDuplicate = false;
         ScopedLinkHooks hooks(borrowed.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(),
                               {}, 5000, [&](okuflow::PhoneAdbTestHooks& h) {
-            h.beforeDefaultStopForTest = [&] {
-                borrowed.duplicateSerial.store(3);
-                borrowed.listEmpty.store(false);
+            h.beforeDefaultStopForTest = [&] { addDuplicate = true; };
+            h.transformAdbEntriesForTest = [&](std::uint16_t port, auto& entries) {
+                if (!addDuplicate || port != borrowed.port || entries.empty()) return;
+                auto duplicate = entries.front();
+                ++duplicate.transportId;
+                entries.push_back(std::move(duplicate));
             };
         });
-        const auto reports = LinkCycles(40, [](const auto& r) {
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto reports = LinkCycles(60, [](const auto& r) {
             return r.decision.action == okuflow::PhoneLinkAction::AskDefaultServerToExit;
         }, "abc");
         QCOMPARE(reports.back().decision.action, okuflow::PhoneLinkAction::AskDefaultServerToExit);
+        QVERIFY(reports.back().observation.defaultPhoneStalled);
         QCOMPARE(reports.back().actionResult, "kept: the default server serves another device");
-        QCOMPARE(borrowed.ServiceCount("host:kill"), 0);
-        QVERIFY(!decoy.Exited());
+        QVERIFY(!borrowed.Exited());
     }
     void hostKillIsAbortedWhenTheInterfaceIsGoneAtExecution() {
         // Iteration 4 (B4): like termination, host:kill re-checks the
