@@ -463,6 +463,24 @@ bool WaitForFixtureFile(const QString& path, int timeoutMs = 3000)
     }
     return QFile::exists(path);
 }
+// Observes the fixture's siblings until `wanted` of them are seen. One look is
+// not enough on every machine: ObserveOkuFlowSiblings skips a candidate whose
+// image file cannot be opened at that instant, and these rows observe a
+// freshly copied executable that a security scan may hold for a moment (a
+// hosted Windows runner observed none right after the fixture wrote its ready
+// file). Production observes again on every discovery cycle.
+std::vector<okuflow::OkuFlowSiblingObservation> ObserveSiblingsEventually(const std::wstring& image,
+                                                                           const std::wstring& tag, size_t wanted,
+                                                                           int timeoutMs = 5000)
+{
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+    auto siblings = okuflow::ObserveOkuFlowSiblings(image, tag);
+    while (siblings.size() < wanted && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        siblings = okuflow::ObserveOkuFlowSiblings(image, tag);
+    }
+    return siblings;
+}
 unsigned long ReadFixturePid(const QString& path)
 {
     QFile file(path);
@@ -1161,7 +1179,7 @@ private slots:
         auto unregistered = launch({L"sleep", c.toStdWString()});
         QVERIFY(exiting && windowless && unregistered);
         QVERIFY(WaitForFixtureFile(a) && WaitForFixtureFile(b) && WaitForFixtureFile(c));
-        const auto siblings = okuflow::ObserveOkuFlowSiblings(image.toStdWString(), tag);
+        const auto siblings = ObserveSiblingsEventually(image.toStdWString(), tag, 3);
         QCOMPARE(siblings.size(), size_t{3});
         const auto find = [&](DWORD pid) {
             return *std::find_if(siblings.begin(), siblings.end(), [pid](const auto& s) { return s.processId == pid; });
@@ -1277,7 +1295,7 @@ private slots:
             {L"instance", tag, L"1", ready.toStdWString()}, {}, {}}, &error);
         QVERIFY2(instance, error.c_str());
         QVERIFY(WaitForFixtureFile(ready));
-        const auto siblings = okuflow::ObserveOkuFlowSiblings(image.toStdWString(), tag);
+        const auto siblings = ObserveSiblingsEventually(image.toStdWString(), tag, 1);
         QCOMPARE(siblings.size(), size_t{1});
         okuflow::LeftoverInstanceStopRequest request{siblings[0].processId, siblings[0].creation, image.toStdWString(), {}};
         request.visibleWindowForTest = [](DWORD) { return true; };
@@ -1304,7 +1322,7 @@ private slots:
             {L"instance-windows", tag, L"0", b.toStdWString()}, {}, {}}, &error);
         QVERIFY2(stuck && alive, error.c_str());
         QVERIFY(WaitForFixtureFile(a) && WaitForFixtureFile(b));
-        const auto siblings = okuflow::ObserveOkuFlowSiblings(image.toStdWString(), tag);
+        const auto siblings = ObserveSiblingsEventually(image.toStdWString(), tag, 2);
         QCOMPARE(siblings.size(), size_t{2});
         for (const auto& sibling : siblings) {
             QVERIFY(sibling.registered && !sibling.hasVisibleWindow);
@@ -1340,7 +1358,7 @@ private slots:
             {L"instance-nowindow", tag, a.toStdWString()}, {}, {}}, &error);
         QVERIFY2(instance, error.c_str());
         QVERIFY(WaitForFixtureFile(a));
-        const auto siblings = okuflow::ObserveOkuFlowSiblings(image.toStdWString(), tag);
+        const auto siblings = ObserveSiblingsEventually(image.toStdWString(), tag, 1);
         QCOMPARE(siblings.size(), size_t{1});
         QVERIFY(siblings.front().registered && !siblings.front().hasVisibleWindow);
         QVERIFY(siblings.front().uiThreadHasNoWindow);
