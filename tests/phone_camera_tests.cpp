@@ -982,6 +982,7 @@ private slots:
             QVERIFY2(child, error.c_str());
             QVERIFY(WaitForFixtureFile(ready2));
             pid2 = ReadFixturePid(ready2);
+            QVERIFY(pid2);
         } // Destructor alone must stop the exact owned child.
         QVERIFY(WaitFixtureProcessExited(pid2));
     }
