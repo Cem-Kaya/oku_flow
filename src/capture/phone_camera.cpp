@@ -1894,11 +1894,24 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
     case A::TerminateDefaultServer: {
         if (DefaultIsUserEndpoint() || !o.phoneWanted) return "refused: user endpoint or no phone intent";
         const auto port = DefaultPort();
+        if (const auto hooks = Hooks(); hooks && hooks->beforeDefaultStopForTest) hooks->beforeDefaultStopForTest();
+        // Termination needs the Windows ADB interface at execution time too:
+        // a phone unplugged since the decision is no reason to stop anything.
+        if (RuntimeAdbInterface() != PhoneAdbInterface::Present) return "kept: the Windows ADB interface is gone";
         if (o.serverProbe == PhoneServerProbe::Responsive || o.shadowRunning) {
             const auto listed = ListDefaultEntries(canceled);
             if (!listed) return "kept: the default server listing failed";
             if (OtherDeviceServed(*listed, target)) return "kept: the default server serves another device";
             if (ListsTargetUsable(*listed, target)) return "kept: the default server lists the phone now";
+        } else if (const auto listed = ListDefaultEntries(canceled)) {
+            // A hang confirmed by version probes alone: one short listing
+            // before anything else. A server that lists at all (a slow but
+            // healthy one, or one that recovered since the second probe) is
+            // never stopped; the hang must be confirmed again from scratch.
+            NoteDefaultProbe(OwnedServerProbe::Responsive, ListenerIdentity(port));
+            if (OtherDeviceServed(*listed, target)) return "kept: the default server serves another device";
+            if (ListsTargetUsable(*listed, target)) return "kept: the default server lists the phone";
+            return "kept: the default server answers a listing";
         }
         const auto listener = LookupListener(port);
         if (listener.state == ListenerState::None) { AfterDefaultStopped(); return "default server already gone"; }

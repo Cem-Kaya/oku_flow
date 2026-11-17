@@ -509,10 +509,16 @@ aligned with the project goals.
 - Every stop outcome needs an end state: refused, unopenable, not `adb.exe`,
   or failed twice is the other-program sentence, cleared only when the
   listener is gone or changes or the phone is listed. `host:kill` goes out only
-  after a successful fresh listing without the phone or another device and the
-  identity and image checks. Termination needs the Windows ADB interface. Two
-  programs never fight without an end state: per-episode caps on restarts,
-  `host:kill` and terminations end in a sentence.
+  after a successful fresh listing without the phone (ready, unauthorized or
+  authorizing) or another device and the identity and image checks.
+  Termination needs the Windows ADB interface, checked again when the stop
+  runs. Before any byte of a termination for a hang that only version probes
+  confirmed, one short listing attempt is made: if it succeeds (another
+  device, the phone, or just an answer) nothing is stopped and the hang must
+  be confirmed again; termination goes on only when that listing fails or
+  times out. Two programs never fight without an end state: per-episode caps
+  on restarts, `host:kill`, terminations and private-server starts beside the
+  default plus hand-backs end in a sentence.
 - Never shorten the 5 s hang confirmation after an event; events restart it.
   Confirm a hang from the doctor's own probe too (the borrowed branch of
   `EnsureAdbServer` no longer runs once a private server exists).

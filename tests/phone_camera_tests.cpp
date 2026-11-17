@@ -2108,6 +2108,42 @@ private slots:
         QVERIFY(other.child->WaitForExit(std::chrono::milliseconds(3000)));
         QVERIFY(okuflow::OwnedAdbServerPort().has_value());
     }
+    void slowButListingDefaultIsNeverStopped() {
+        // Iteration 3 (C1): two host:version answers slower than the budget
+        // confirm a "hang", but the server lists at once when asked: it is
+        // never stopped, and the hang has to be confirmed again.
+        DefaultAdbFixture slow({L"--fixture-slow-version", L"1100"});
+        QVERIFY(slow.copied && !slow.Exited());
+        ScopedLinkHooks hooks(slow.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {}, 100);
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto reports = LinkCycles(20, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::TerminateDefaultServer; });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::TerminateDefaultServer));
+        QVERIFY2(reports.back().actionResult.find("answers a listing") != std::string::npos, reports.back().actionResult.c_str());
+        const auto later = LinkCycles(6);
+        for (const auto& report : later)
+            QVERIFY2(report.actionResult.find("terminated") == std::string::npos, report.actionResult.c_str());
+        QVERIFY(!slow.Exited());
+    }
+    void hungDefaultIsKeptWhenTheInterfaceIsGoneAtExecution() {
+        // C1: the Windows ADB interface is re-checked when the stop runs.
+        DefaultAdbFixture hung({L"--fixture-hang"});
+        QVERIFY(hung.copied && !hung.Exited());
+        auto present = std::make_shared<std::atomic<bool>>(true);
+        ScopedLinkHooks hooks(hung.port, okuflow::PhoneAdbInterface::Present, OwnedChildFixturePath().toStdWString(), {},
+                              100, [present](okuflow::PhoneAdbTestHooks& h) {
+            h.adbInterface = [present] {
+                return present->load() ? okuflow::PhoneAdbInterface::Present : okuflow::PhoneAdbInterface::Absent; };
+            h.beforeDefaultStopForTest = [present] { present->store(false); }; // Unplugged in between.
+        });
+        okuflow::NotePhoneLinkEvent(okuflow::PhoneLinkEvent::AppStart);
+        const auto reports = LinkCycles(12, [](const auto& r) {
+            return r.decision.action == okuflow::PhoneLinkAction::TerminateDefaultServer; });
+        QCOMPARE(int(reports.back().decision.action), int(okuflow::PhoneLinkAction::TerminateDefaultServer));
+        QVERIFY2(reports.back().actionResult.find("interface is gone") != std::string::npos, reports.back().actionResult.c_str());
+        QTest::qWait(300);
+        QVERIFY(!hung.Exited());
+    }
     void connectStalledListenerIsUnresponsive() {
         // A3: a frozen listener with a full accept queue is a hang, not "no
         // listener": it is confirmed and acted on, not worked around.
