@@ -161,6 +161,11 @@ struct LegacyAdbRecoveryRequest {
     // Optional live recheck, consulted before each stop stage in addition
     // to the snapshot flag above. True means a session is busy.
     std::function<bool()> hasActiveOrStartingPhoneSessions;
+    // Optional: the caller's authority to act (false once the user chose
+    // another source). Asked with every cancellation check, so also before
+    // each stop stage and right before host:kill's bytes are written: false
+    // ends the attempt as Canceled and stops nothing further.
+    std::function<bool()> stillWanted;
     LegacyAdbProvenanceExpectations expectations;
     LegacyAdbRecoveryPolicy policy;
 };
@@ -209,11 +214,15 @@ struct DefaultAdbStopRequest {
     bool terminateIfAlive{true};
     std::wstring requiredImageName{L"adb.exe"};
     const std::atomic<bool>* canceled{nullptr};
-    // Asked right before host:kill is sent and right before the
-    // termination: false does neither (status Canceled). The caller's
-    // authority to act can end while the stop runs (the user chose another
-    // source). Unset: always wanted.
+    // Asked right before host:kill is sent (again after its connect and
+    // listener check, right before the first byte is written) and right
+    // before the termination: false does neither (status Canceled). The
+    // caller's authority to act can end while the stop runs (the user chose
+    // another source). Unset: always wanted.
     std::function<bool()> stillWanted;
+    // Test seam only: runs after the raw host:kill connect completed, before
+    // the listener re-check and before any byte is written.
+    std::function<void()> afterHostKillConnectForTest;
     std::chrono::milliseconds hostKillWait{2000};
     std::chrono::milliseconds exitWait{2000};
 };

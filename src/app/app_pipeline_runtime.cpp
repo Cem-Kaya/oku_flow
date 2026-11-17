@@ -247,13 +247,13 @@ void OkuFlowApp::PopulateCameraCombo() {
     mainWindow_->setCameraDevices(names, selectedCameraIndex_);
 }
 
-void OkuFlowApp::RefreshPhoneIntentGeneration(bool force)
+void OkuFlowApp::RefreshPhoneIntentGeneration()
 {
     const QString key = (cameraIntent_.TemporaryOwner().isEmpty() ? QStringLiteral("own|") : QStringLiteral("temporary|")) +
         cameraIntent_.TemporaryPhoneIntent() + QLatin1Char('|') + preferredPhoneCamera_ + QLatin1Char('|') +
         (automaticPhoneSelectionAllowed_ ? QStringLiteral("auto|") : QStringLiteral("manual|")) +
         (FileSourceRequested() ? QStringLiteral("file") : QStringLiteral("camera"));
-    if (!force && key == phoneIntentKey_) return;
+    if (key == phoneIntentKey_) return;
     phoneIntentKey_ = key;
     phoneIntentGeneration_.fetch_add(1);
 }
@@ -427,7 +427,19 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
     // ladder runs before any re-plug or manual pick.
     linkRequest.phoneWantedIfAttached = !temporarySource && automaticPhoneSelectionAllowed_ && phoneIntent.isEmpty();
     linkRequest.captureAbandoned = mediaCapture_.WasAbandoned();
-    linkRequest.sessionStreaming = !connectedSerial.empty() && cameraFramePresented_;
+    // Measured by frames the capture delivered, not presented: a media view
+    // (a PDF page, the recording) or a minimized or covered window presents
+    // nothing while a healthy session keeps delivering (as for the resume
+    // check). A live session is Connected for the doctor, which never
+    // decides a stop of the server it uses.
+    {
+        std::uint64_t delivered = 0;
+        if (!connectedSerial.empty() && cameraIngress_) {
+            std::scoped_lock lock(cameraIngress_->mutex);
+            delivered = cameraIngress_->delivered;
+        }
+        linkRequest.sessionStreaming = delivered != 0;
+    }
     // The phone of the selected session, also before its first frame.
     linkRequest.targetSerial = !connectedSerial.empty() ? connectedSerial : recoverySerial;
     auto linkReport = std::make_shared<PhoneLinkReport>();

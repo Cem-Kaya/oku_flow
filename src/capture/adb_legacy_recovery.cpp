@@ -55,8 +55,12 @@ struct SocketGuard {
 
 bool Canceled(const LegacyAdbRecoveryRequest& request)
 {
+    // A request that lost its authority (the user chose another source)
+    // ends like a canceled one: before every stop stage and right before
+    // host:kill's bytes are written.
     return (request.canceled && request.canceled->load()) ||
-           (request.shutdownRequested && request.shutdownRequested->load());
+           (request.shutdownRequested && request.shutdownRequested->load()) ||
+           (request.stillWanted && !request.stillWanted());
 }
 
 std::chrono::milliseconds ClampMs(std::chrono::milliseconds value,
@@ -744,7 +748,11 @@ void NotePortAfterExit(std::uint16_t port, DWORD oldPid, std::string* diagnostic
 
 // Raw host:kill to the loopback port after re-checking, post-connect, that
 // the listener still belongs to `pid`. No adb client process is run.
-bool SendRawHostKill(std::uint16_t port, DWORD pid, const std::atomic<bool>* canceled)
+// `stillWanted` is asked once more right before the first byte is written
+// (the connect and the listener check can take a while): false sends
+// nothing.
+bool SendRawHostKill(std::uint16_t port, DWORD pid, const std::atomic<bool>* canceled,
+                     const std::function<bool()>& stillWanted, const std::function<void()>& afterConnectForTest)
 {
     static std::once_flag winsockOnce;
     static int winsockResult = -1;
@@ -781,6 +789,7 @@ bool SendRawHostKill(std::uint16_t port, DWORD pid, const std::atomic<bool>* can
             if (ready < 0 || Clock::now() >= deadline) return false;
         }
     }
+    if (afterConnectForTest) afterConnectForTest();
     DWORD listener = 0;
     if (FindLoopbackListenerPid(port, &listener) != ListenerLookup::Found || listener != pid) return false;
     constexpr char requestBytes[] = "0009host:kill";
@@ -795,6 +804,7 @@ bool SendRawHostKill(std::uint16_t port, DWORD pid, const std::atomic<bool>* can
             if (Clock::now() >= deadline) return false;
             continue;
         }
+        if (sent == 0 && stillWanted && !stillWanted()) return false;
         const int now = send(guard.socket, requestBytes + sent, requestLength - sent, 0);
         if (now <= 0) return false;
         sent += now;
@@ -961,7 +971,13 @@ DefaultAdbStopResult TryStopDefaultAdbServer(const DefaultAdbStopRequest& reques
     const auto unwanted = [&] { return request.stillWanted && !request.stillWanted(); };
     if (request.sendHostKillFirst) {
         if (unwanted()) { result.status = S::Canceled; result.diagnostic += ": no longer wanted"; return result; }
-        result.hostKillDelivered = SendRawHostKill(request.port, pid, request.canceled);
+        result.hostKillDelivered = SendRawHostKill(request.port, pid, request.canceled, request.stillWanted,
+                                                   request.afterHostKillConnectForTest);
+        // Not sent because the request lost its authority meanwhile: nothing
+        // further (no termination either).
+        if (!result.hostKillDelivered && unwanted()) {
+            result.status = S::Canceled; result.diagnostic += ": no longer wanted"; return result;
+        }
         if (result.hostKillDelivered) {
             const auto deadline = Clock::now() + ClampMs(request.hostKillWait, std::chrono::milliseconds(0),
                                                          std::chrono::milliseconds(5000));

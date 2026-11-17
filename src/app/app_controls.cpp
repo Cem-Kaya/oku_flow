@@ -11,8 +11,6 @@ namespace okuflow {
 void OkuFlowApp::OnCameraSelectionChanged(int index) {
     if (uiState_ && uiState_->cameraCombo_ &&
         uiState_->cameraCombo_->itemData(index) == QStringLiteral("phone")) {
-        // A deliberate pick revokes whatever a discovery cycle is doing now.
-        RefreshPhoneIntentGeneration(true);
         pipelineOrchestrator_->CancelCameraReconnect();
         automaticPhoneSelectionAllowed_ = true;
         preferredPhoneCamera_ = QStringLiteral("okuflow-phone:"); // Any newly discovered USB phone.
@@ -21,6 +19,10 @@ void OkuFlowApp::OnCameraSelectionChanged(int index) {
         saved.cameraSelectionExplicit = true;
         saved.cameraSymbolicLink = preferredPhoneCamera_;
         cameraIntent_.SelectManual(preferredPhoneCamera_,-1);
+        // A pick that changes the intent revokes whatever a discovery cycle
+        // is doing now, before the pick's event (computed after the change;
+        // a pick that leaves the intent as it was revokes nothing).
+        RefreshPhoneIntentGeneration();
         if (controlService_) controlService_->SourceChanged();
         if (recordingManager_) {
             if (const auto session = recordingManager_->CurrentSessionInfo()) StopRecording(session->id);
@@ -30,8 +32,8 @@ void OkuFlowApp::OnCameraSelectionChanged(int index) {
         StopCameraCapture();
         selectedCameraIndex_ = -1;
         mainWindow_->setFileSourceSelected({},uiState_->cameraCombo_->findData(QStringLiteral("phone")));
+        RefreshPhoneIntentGeneration(); // The file choice ended above: before the event.
         NotePhoneEvent(PhoneLinkEvent::ManualPick);
-        RefreshPhoneIntentGeneration();
         SavePersistentSettings();
         UpdateCameraPlaceholder();
         return;
@@ -47,9 +49,11 @@ void OkuFlowApp::OnCameraSelectionChanged(int index) {
     }
 
     // A manual camera pick always wins over an in-flight automatic reconnect,
-    // and over whatever a discovery cycle's link ladder is doing now (a
-    // webcam or another phone: no host:kill, no stop, no launch follows).
-    RefreshPhoneIntentGeneration(true);
+    // and over whatever a discovery cycle's link ladder is doing now when it
+    // changes the intent (a webcam or another phone: no host:kill, no stop,
+    // no launch follows). The generation is computed after the change: a
+    // pick of the phone already chosen revokes nothing, so a cycle in flight
+    // keeps its action (a launch the session start then finds done).
     pipelineOrchestrator_->CancelCameraReconnect();
     automaticPhoneSelectionAllowed_ = !cameras_[static_cast<size_t>(index)].phoneSerial.empty();
     preferredPhoneCamera_ = automaticPhoneSelectionAllowed_
@@ -67,6 +71,7 @@ void OkuFlowApp::OnCameraSelectionChanged(int index) {
     // A manual camera pick cancels pending file opening as well as adopted
     // playback. Do this after StopRecording's same-session hold transition.
     ReturnVideoToCamera();
+    RefreshPhoneIntentGeneration(); // The file choice ended with it.
     if (mainWindow_) mainWindow_->setVideoSourceSelected(false, index);
     if (automaticPhoneSelectionAllowed_) {
         // A manual pick after any failure starts a fresh recovery ladder.

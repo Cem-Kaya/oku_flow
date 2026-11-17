@@ -558,13 +558,14 @@ void OkuFlowApp::OpenVideoFile(const QString& path)
     }
     // Suspend recovery only for the explicit file choice. Saved phone intent
     // is retained, so returning to Camera resumes its normal discovery/retry.
-    // A link ladder already running for the phone loses its authority now.
-    RefreshPhoneIntentGeneration(true);
     pipelineOrchestrator_->CancelCameraReconnect();
     pendingCameraStart_.reset();
     if (cameraStartupPending_) StopCameraCapture();
     auto& doc = *videoDocument_;
     doc.pendingOpenPath = NormalizedVideoPath(path); // newest request owns completion
+    // A link ladder already running for the phone loses its authority now
+    // (computed after the change: the file is requested from here on).
+    RefreshPhoneIntentGeneration();
     if (recordingManager_) {
         const auto current = recordingManager_->CurrentSessionInfo();
         if (current) {

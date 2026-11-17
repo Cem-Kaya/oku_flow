@@ -167,6 +167,19 @@ struct PhoneAdbTestHooks {
     // before the private server is stopped (a session's server request made
     // here must wait for the hand-back).
     std::function<void()> afterHandBackCheckForTest;
+    // Runs inside a server request (EnsureAdbServer) at a named stage:
+    // "locked" (the lifecycle lock was just taken, as after waiting for it)
+    // and "default-probed" (the default's version probe just returned), so
+    // a test can change the source inside the request.
+    std::function<void(std::string_view stage)> serverRequestStageForTest;
+    // Runs after the raw host:kill connect, before any byte is written.
+    std::function<void()> afterHostKillConnectForTest;
+    // Stands in for the legacy bundle reclamation of a hung default, which
+    // runs only in production (never against the machine's default port
+    // from a fixture): set, the branch is entered as in production, this
+    // runs in place of the reclamation, and the branch goes on as for a
+    // default that is not a legacy bundle.
+    std::function<void()> legacyReclaimForTest;
     // Doctor budgets for fast fixtures; production uses PhoneLinkPolicy{}.
     std::optional<PhoneLinkPolicy> linkPolicy;
     // Owned-server budgets for fast fixtures (start grace, readiness,

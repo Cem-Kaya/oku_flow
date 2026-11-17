@@ -120,10 +120,16 @@ public:
     // and launch, and always wins over a restart.
     // allowLifecycleEffects=false performs only an exact-child health probe:
     // it never launches, restarts or retires support for ordinary enumeration.
-    EnsureResult EnsureRunning(const std::atomic<bool>* canceled, bool allowLifecycleEffects = true);
+    // `stillWanted` (optional): the caller's authority (a discovery cycle or
+    // a ladder action for a source the user may leave meanwhile). Asked with
+    // every cancellation check once the manager's lock is held, so a launch,
+    // a restart or a replacement of the child, and the waits before them,
+    // stop for a request that is no longer wanted (result Canceled).
+    EnsureResult EnsureRunning(const std::atomic<bool>* canceled, bool allowLifecycleEffects = true,
+                               std::function<bool()> stillWanted = {});
     // Doctor rung 3: restart a responsive but blind owned child now. Live
     // sessions and cancellation win; the doctor's budget paces it.
-    EnsureResult Restart(const std::atomic<bool>* canceled);
+    EnsureResult Restart(const std::atomic<bool>* canceled, std::function<bool()> stillWanted = {});
     // Events clear the restart cooldown and its doubling. Lock-free: safe on
     // the UI thread while a worker holds the manager through a launch; the
     // request is applied by the next EnsureRunning/Restart.
@@ -145,9 +151,25 @@ public:
     // do not (the sentence it leads to stands until OkuFlow's adb answers).
     // Lock-free: readable while a worker holds the manager through a launch.
     int UnansweredStarts() const { return unansweredStarts_.load(); }
+    // The same count, for a manager that is about to be dropped (the caller
+    // keeps it): also a child that died before it ever answered and was not
+    // counted yet, and one dropped alive past its readiness deadline
+    // without ever answering.
+    int UnansweredStartsAtRetirement();
 private:
     bool Canceled(const std::atomic<bool>* canceled) const
     { return stopRequested_.load() || (canceled && canceled->load()); }
+    // Canceled, or the current call's request is no longer wanted. Only
+    // while mutex_ is held (wanted_ belongs to the call holding it).
+    bool Halted(const std::atomic<bool>* canceled) const
+    { return Canceled(canceled) || (wanted_ && !wanted_()); }
+    std::function<bool()> wanted_;
+    struct WantedScope {
+        WantedScope(OwnedAdbServer* owner, std::function<bool()> wanted) : owner(owner)
+        { owner->wanted_ = std::move(wanted); }
+        ~WantedScope() { owner->wanted_ = {}; }
+        OwnedAdbServer* owner;
+    };
     bool ResponsiveOwnedChild(OwnedServerProbe response) const;
     bool WaitSlice(const std::atomic<bool>* canceled) const;
     bool WaitFor(std::chrono::milliseconds duration, const std::atomic<bool>* canceled) const;

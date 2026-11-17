@@ -588,8 +588,9 @@ private:
     std::atomic<std::uint64_t> phoneIntentGeneration_{1};
     QString phoneIntentKey_;
     // Recomputes what the phone intent is now and advances the generation
-    // when it changed (or always, for a deliberate pick).
-    void RefreshPhoneIntentGeneration(bool force = false);
+    // only when it changed (also for a deliberate pick: one that leaves the
+    // intent as it was revokes nothing).
+    void RefreshPhoneIntentGeneration();
     QString preferredPhoneCamera_;
     bool automaticPhoneSelectionAllowed_{};
     std::shared_ptr<std::atomic<bool>> pendingCameraStartupCancel_;

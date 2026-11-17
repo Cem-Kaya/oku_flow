@@ -301,12 +301,27 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         ++handOvers_;
         return A::StartShadowServer;
     };
+    // OkuFlow's private server beside the default does not answer, or its
+    // listing fails, while the default lists the phone usable (ready,
+    // unauthorized or authorizing; not "ready" for a phone whose adbd timed
+    // out there): the private server is what is broken. Its own diagnosis
+    // (ServerStarting, an owned ServerUnresponsive) never looked at the
+    // default, so OkuFlow stayed on it for good. Handed back under the
+    // hand-back budget and the hand-over accounting (counted when the
+    // transport retires it; a live session defers it), as from a blind one.
+    const bool defaultServesPhone = owned && o.shadowRunning && o.defaultListsPhone && !o.defaultPhoneStalled;
+    const auto handBack = [&] {
+        if (!handback_.Allowed(nowMs)) return A::Relist;
+        Reserve(handback_, nowMs, policy_.reconnectRetryMs, policy_.reconnectRetryMs);
+        return A::HandBackToDefault;
+    };
     switch (diagnosis) {
     case D::Connected:
     case D::NotWanted:
     case D::EndpointUnsupported:
         return A::None;
     case D::ServerStarting:
+        if (defaultServesPhone) return handBack();
         if (o.serverLaunchFailures >= policy_.adbLaunchFailuresToName) {
             *raised = D::AdbCannotStart;
             return A::WaitForUser;
@@ -342,6 +357,7 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         // transport after sleep or a cable pull. The restart rung and its
         // cap after the blind grace, ending in the re-plug sentence.
         if (owned) {
+            if (defaultServesPhone) return handBack();
             if (nowMs - SinceEventOr(unresponsiveSinceMs_) < policy_.blindGraceMs) return A::Relist;
             if (restart_.attempts >= policy_.blindRestartCap) { *raised = D::ReplugCable; return A::WaitForUser; }
             if (!restart_.Allowed(nowMs)) return A::Relist;
@@ -370,11 +386,7 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         // default are started, see shadow()). The hand-back counts toward
         // the cap when the transport actually retires its private server
         // (NoteHandOver): a live session can defer it.
-        if (owned && o.shadowRunning && o.defaultListsPhone && !o.defaultPhoneStalled) {
-            if (!handback_.Allowed(nowMs)) return A::Relist;
-            Reserve(handback_, nowMs, policy_.reconnectRetryMs, policy_.reconnectRetryMs);
-            return A::HandBackToDefault;
-        }
+        if (defaultServesPhone) return handBack();
         // Windows cannot tell (Unknown): after a long blind period OkuFlow's
         // own server may be started or restarted as if the interface were
         // there; another server is never asked to exit or stopped (below).

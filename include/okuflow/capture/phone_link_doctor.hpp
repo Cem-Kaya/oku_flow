@@ -356,6 +356,14 @@ public:
     {
         if (episode == episode_ && terminate_.attempts > 0) --terminate_.attempts;
     }
+    // A RestartOwnedServer of this episode was deferred because a live
+    // session uses the private server: nothing was restarted, so it does not
+    // spend blindRestartCap (whose end is the re-plug sentence). The retry
+    // spacing stays as reserved.
+    void NoteRestartDeferred(std::uint64_t episode)
+    {
+        if (episode == episode_ && restart_.attempts > 0) --restart_.attempts;
+    }
     std::uint64_t Episode() const { return episode_; }
     // The listener is gone, changed identity, or the phone is listed.
     void ClearDefaultStopRefused() { defaultStopRefused_ = false; stopFailures_ = 0; }

@@ -249,22 +249,22 @@ bool OwnedAdbServer::WaitFor(std::chrono::milliseconds duration, const std::atom
 {
     const auto deadline = std::chrono::steady_clock::now() + duration;
     while (std::chrono::steady_clock::now() < deadline) {
-        if (Canceled(canceled)) return false;
+        if (Halted(canceled)) return false;
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
-    return !Canceled(canceled);
+    return !Halted(canceled);
 }
 
 OwnedAdbServer::EnsureResult OwnedAdbServer::LaunchAndAwaitLocked(
     const std::atomic<bool>* canceled, bool restart)
 {
     for (int attempt = 0; attempt < std::max(1, policy_.maxLaunchAttemptsPerEnsure); ++attempt) {
-        if (Canceled(canceled)) return EnsureResult::Canceled;
+        if (Halted(canceled)) return EnsureResult::Canceled;
         // Every restart uses a fresh private port; the prior listener's
         // accepted connections can outlive the process's exclusive bind.
         if (!port_) port_ = pickPort_();
         if (!*port_) { port_.reset(); return EnsureResult::LaunchFailed; }
-        if (Canceled(canceled)) return EnsureResult::Canceled;
+        if (Halted(canceled)) return EnsureResult::Canceled;
         child_ = launch_(*port_);
         // Budget recorded even for a failed attempt so a broken executable
         // cannot be retried on every discovery cycle.
@@ -291,7 +291,7 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::LaunchAndAwaitLocked(
         deathCounted_ = false;
         const auto deadline = std::chrono::steady_clock::now() + policy_.readinessDeadline;
         for (;;) {
-            if (Canceled(canceled)) return EnsureResult::Canceled; // Child stays owned.
+            if (Halted(canceled)) return EnsureResult::Canceled; // Child stays owned.
             if (!child_->IsRunning()) {
                 // Our child lost (e.g. the port was claimed between picking
                 // and binding). Anything answering there is not ours to use
@@ -302,7 +302,7 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::LaunchAndAwaitLocked(
                 break;
             }
             const auto response = probe_(*port_, canceled);
-            if (Canceled(canceled)) return EnsureResult::Canceled;
+            if (Halted(canceled)) return EnsureResult::Canceled;
             if (ResponsiveOwnedChild(response)) {
                 answered_ = true;
                 unansweredStarts_.store(0);
@@ -317,19 +317,21 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::LaunchAndAwaitLocked(
 }
 
 OwnedAdbServer::EnsureResult OwnedAdbServer::EnsureRunning(const std::atomic<bool>* canceled,
-                                                        bool allowLifecycleEffects)
+                                                        bool allowLifecycleEffects,
+                                                        std::function<bool()> stillWanted)
 {
     std::unique_lock lock(mutex_, std::defer_lock);
     while (!lock.try_lock_for(std::chrono::milliseconds(20))) {
         if (Canceled(canceled)) return EnsureResult::Canceled;
     }
+    const WantedScope scope(this, std::move(stillWanted));
     if (stopped_) return EnsureResult::Stopped;
-    if (Canceled(canceled)) return EnsureResult::Canceled;
+    if (Halted(canceled)) return EnsureResult::Canceled;
     ApplyBudgetResetLocked();
     CountUnansweredLocked();
     if (child_ && child_->IsRunning() && port_) {
         const auto response = probe_(*port_, canceled);
-        if (Canceled(canceled)) return EnsureResult::Canceled;
+        if (Halted(canceled)) return EnsureResult::Canceled;
         if (ResponsiveOwnedChild(response)) {
             answered_ = true;
             unansweredStarts_.store(0);
@@ -349,7 +351,7 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::EnsureRunning(const std::atomic<boo
             if (!WaitFor(policy_.confirmationSpacing, canceled)) return EnsureResult::Canceled;
             if (!child_->IsRunning()) { confirmed = false; break; }
             const auto confirmedResponse = probe_(*port_, canceled);
-            if (Canceled(canceled)) return EnsureResult::Canceled;
+            if (Halted(canceled)) return EnsureResult::Canceled;
             if (ResponsiveOwnedChild(confirmedResponse)) {
                 answered_ = true;
                 unansweredStarts_.store(0);
@@ -359,13 +361,13 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::EnsureRunning(const std::atomic<boo
                 return EnsureResult::NotReady;
         }
         if (confirmed && child_->IsRunning()) {
-            if (Canceled(canceled)) return EnsureResult::Canceled;
+            if (Halted(canceled)) return EnsureResult::Canceled;
             const bool live = hasLiveSessions_ && hasLiveSessions_();
-            if (Canceled(canceled)) return EnsureResult::Canceled;
+            if (Halted(canceled)) return EnsureResult::Canceled;
             if (live) return EnsureResult::RestartDeferredLiveSession;
             if (std::chrono::steady_clock::now() < nextRestart_)
                 return EnsureResult::Throttled;
-            if (Canceled(canceled)) return EnsureResult::Canceled;
+            if (Halted(canceled)) return EnsureResult::Canceled;
             child_->Stop();
             child_.reset();
             port_.reset();
@@ -382,9 +384,9 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::EnsureRunning(const std::atomic<boo
         port_.reset();
         observation_.store(nullptr);
     }
-    if (Canceled(canceled)) return EnsureResult::Canceled;
+    if (Halted(canceled)) return EnsureResult::Canceled;
     const bool live = hasLiveSessions_ && hasLiveSessions_();
-    if (Canceled(canceled)) return EnsureResult::Canceled;
+    if (Halted(canceled)) return EnsureResult::Canceled;
     if (live) return EnsureResult::RestartDeferredLiveSession;
     // The budget survives a null/failed or already-reaped child, so every
     // subsequent discovery call observes the same crash-loop cooldown.
@@ -393,16 +395,19 @@ OwnedAdbServer::EnsureResult OwnedAdbServer::EnsureRunning(const std::atomic<boo
     return LaunchAndAwaitLocked(canceled, launches_ > 0);
 }
 
-OwnedAdbServer::EnsureResult OwnedAdbServer::Restart(const std::atomic<bool>* canceled)
+OwnedAdbServer::EnsureResult OwnedAdbServer::Restart(const std::atomic<bool>* canceled,
+                                                   std::function<bool()> stillWanted)
 {
     std::unique_lock lock(mutex_, std::defer_lock);
     while (!lock.try_lock_for(std::chrono::milliseconds(20))) {
         if (Canceled(canceled)) return EnsureResult::Canceled;
     }
+    const WantedScope scope(this, std::move(stillWanted));
     if (stopped_) return EnsureResult::Stopped;
-    if (Canceled(canceled)) return EnsureResult::Canceled;
+    if (Halted(canceled)) return EnsureResult::Canceled;
     ApplyBudgetResetLocked();
     if (hasLiveSessions_ && hasLiveSessions_()) return EnsureResult::RestartDeferredLiveSession;
+    if (Halted(canceled)) return EnsureResult::Canceled;
     // A deliberate blind restart is paced by the link doctor's own budget
     // (once after the grace, then 15 s, then 60 s); the crash-loop cooldown
     // only guards automatic relaunches of an exiting child.
@@ -429,6 +434,22 @@ void OwnedAdbServer::CountUnansweredLocked()
         unansweredCountedAt_ = now;
         ++unansweredStarts_;
     }
+}
+
+int OwnedAdbServer::UnansweredStartsAtRetirement()
+{
+    std::lock_guard lock(mutex_);
+    CountUnansweredLocked();
+    // A child dropped alive past its readiness deadline without ever
+    // answering (and not counted yet for a start grace or its death) is a
+    // start that did not work: counted once. One dropped earlier (the user
+    // chose a webcam right after the start) is not.
+    if (child_ && !answered_ && !deathCounted_ && unansweredCountedAt_ == launchedAt_ &&
+        std::chrono::steady_clock::now() - launchedAt_ >= policy_.readinessDeadline) {
+        unansweredCountedAt_ = std::chrono::steady_clock::now();
+        ++unansweredStarts_;
+    }
+    return unansweredStarts_.load();
 }
 
 void OwnedAdbServer::ResetBudgets()

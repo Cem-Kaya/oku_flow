@@ -280,7 +280,13 @@ struct ListenerLookup {
     ListenerState state{ListenerState::Unknown};
     AdbListenerIdentity identity{}; // processId only when Unopenable.
 };
-ListenerLookup LookupListener(std::uint16_t port)
+// `refusedOnIpv4`: the caller's IPv4 connect to 127.0.0.1 was refused. Only
+// an IPv4 row (loopback or 0.0.0.0) can stand for a listener that refused
+// it (a frozen one whose accept queue is full); an IPv6-only row (::) is
+// another program's socket that never saw the connect, so with no IPv4 row
+// nothing listens there for OkuFlow. Without the flag a :: row identifies a
+// listener that answered on 127.0.0.1 (a dual-stack socket).
+ListenerLookup LookupListener(std::uint16_t port, bool refusedOnIpv4 = false)
 {
     ListenerLookup lookup;
     if (!port) { lookup.state = ListenerState::None; return lookup; }
@@ -289,6 +295,7 @@ ListenerLookup LookupListener(std::uint16_t port)
     const auto hooks = Hooks();
     lookup.state = ListenerState::None;
     for (const auto& row : AdbListenerRows(rows, port)) {
+        if (refusedOnIpv4 && row.ipv6) continue;
         const bool forcedUnopenable = hooks && hooks->defaultListenerUnopenable && port == hooks->port &&
                                       hooks->defaultListenerUnopenable();
         HANDLE process = forcedUnopenable ? nullptr
@@ -454,7 +461,7 @@ OwnedServerProbe ProbeAdbHostVersion(std::uint16_t port, const std::atomic<bool>
     QTcpSocket socket;
     try { ConnectTo(socket, port, kHostConnectMs, canceled); }
     catch (const AdbServerUnavailable&) {
-        const auto listener = LookupListener(port).state;
+        const auto listener = LookupListener(port, true).state;
         return listener == ListenerState::Found || listener == ListenerState::Unopenable
             ? OwnedServerProbe::Unresponsive : OwnedServerProbe::NoListener;
     }
@@ -542,9 +549,15 @@ bool DefaultServesTarget(const std::vector<AdbDeviceEntry>& entries, const std::
 // but healthy server that just woke up gets the full time again. Called
 // both where OkuFlow borrows the default and from the doctor's cycle while
 // OkuFlow's own server runs beside it.
+void ClearDefaultListingHang(AdbRuntime& runtime);
 bool NoteDefaultProbe(OwnedServerProbe probe, const std::optional<AdbListenerIdentity>& identity)
 {
     auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
+    // Listing failures belong to the listener they were seen on: a different
+    // listener observed now (another process, or the same port after an
+    // exit and a new start) is not hung by them; it must confirm its own.
+    if (runtime.listingFailures && probe != OwnedServerProbe::NoListener && runtime.listingFailureIdentity != identity)
+        ClearDefaultListingHang(runtime);
     if (probe != OwnedServerProbe::Unresponsive) {
         runtime.borrowedFailures = 0;
         runtime.borrowedFailureSince = {};
@@ -631,15 +644,35 @@ const char* EnsureResultName(OwnedAdbServer::EnsureResult result)
     return "unknown";
 }
 OwnedAdbServer::EnsureResult EnsureAdbServerOnce(const std::atomic<bool>* canceled, PhoneServerIntent intent,
-                                                 const std::string& wanted);
+                                                 const std::string& wanted, const std::function<bool()>& stillWanted,
+                                                 bool session, bool* dropped);
 // `wanted`: the phone the caller wants (empty: any phone). A hand-back of
 // the private server needs the default to serve that phone. Every change
 // of the result is one trace line (canceled calls are not a change).
+// `stillWanted`: the authority of a discovery cycle or a ladder action (the
+// user may choose another source while it runs); a session's own request
+// has none. It is asked once the lifecycle lock is taken, after each
+// blocking probe or listing, and right before every lifecycle effect: the
+// legacy reclamation (and inside it, right before host:kill is written),
+// a start beside the default, a launch, restart or replacement of OkuFlow's
+// own child, and a retirement of it. A request that is no longer wanted
+// does nothing further and returns Canceled (traced as dropped).
+// `session`: a session's own request. It uses a responsive default even
+// while a start beside it is requested and cannot happen (adb.exe missing):
+// that start is the doctor's rung, which asks again; a session start
+// through a default that serves the phone must not fail for it.
 OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
                                              PhoneServerIntent intent = PhoneServerIntent::PhoneUse,
-                                             const std::string& wanted = {})
+                                             const std::string& wanted = {},
+                                             const std::function<bool()>& stillWanted = {},
+                                             bool session = false)
 {
-    const auto result = EnsureAdbServerOnce(canceled, intent, wanted);
+    bool dropped = false;
+    const auto result = EnsureAdbServerOnce(canceled, intent, wanted, stillWanted, session, &dropped);
+    if (dropped) {
+        TraceLine("adb server request dropped: the source changed");
+        return OwnedAdbServer::EnsureResult::Canceled;
+    }
     if (result == OwnedAdbServer::EnsureResult::Canceled) return result;
     bool changed = false;
     {
@@ -651,10 +684,17 @@ OwnedAdbServer::EnsureResult EnsureAdbServer(const std::atomic<bool>* canceled,
     return result;
 }
 OwnedAdbServer::EnsureResult EnsureAdbServerOnce(const std::atomic<bool>* canceled, PhoneServerIntent intent,
-                                                 const std::string& wanted)
+                                                 const std::string& wanted, const std::function<bool()>& stillWanted,
+                                                 bool session, bool* dropped)
 {
     using Result = OwnedAdbServer::EnsureResult;
     const bool allowOwnedBootstrap = intent == PhoneServerIntent::PhoneUse;
+    // The request lost its authority: nothing further (see EnsureAdbServer).
+    const auto stale = [&] {
+        if (!stillWanted || stillWanted()) return false;
+        *dropped = true;
+        return true;
+    };
     auto& runtime = Runtime();
     std::unique_lock lifecycleLock(runtime.lifecycleMutex, std::defer_lock);
     while (!lifecycleLock.try_lock_for(std::chrono::milliseconds(20))) {
@@ -678,6 +718,9 @@ OwnedAdbServer::EnsureResult EnsureAdbServerOnce(const std::atomic<bool>* cancel
         // next phone-use call and start beside whatever default runs then).
         if (intent == PhoneServerIntent::ReleaseForWebcam) runtime.shadowRequested = false;
     }
+    // Revoked while the lock was awaited (another call held it).
+    if (hooks && hooks->serverRequestStageForTest) hooks->serverRequestStageForTest("locked");
+    if (stale()) return Result::Canceled;
     const auto env = hooks ? AdbServerEndpoint{hooks->port != 0,
                                hooks->ownedServerExecutable.empty(), hooks->port, false}
                            : EnvEndpoint();
@@ -706,9 +749,13 @@ OwnedAdbServer::EnsureResult EnsureAdbServerOnce(const std::atomic<bool>* cancel
         if (intent == PhoneServerIntent::ReleaseForWebcam && !occupied) {
             // An explicit webcam choice relinquishes idle USB ownership.
             // Active/starting phone sessions must finish first.
+            if (stale()) return Result::Canceled;
+            // What this manager counted is kept (see the yield below).
+            const int unanswered = owned->UnansweredStartsAtRetirement();
             owned->Stop();
             { std::lock_guard lock(runtime.mutex);
               if (runtime.ownedServer == owned) runtime.ownedServer.reset();
+              runtime.launchFailures += unanswered;
               runtime.nextServerStart = {}; }
             owned.reset();
         }
@@ -753,10 +800,13 @@ OwnedAdbServer::EnsureResult EnsureAdbServerOnce(const std::atomic<bool>* cancel
               handback = runtime.shadowHandbackProbes >= 2; }
             if (handback) {
                 CheckCanceled(canceled);
+                if (stale()) return Result::Canceled;
+                const int unanswered = owned->UnansweredStartsAtRetirement();
                 owned->Stop();
                 if (hooks && hooks->afterPrivateServerRetiredForTest) hooks->afterPrivateServerRetiredForTest();
                 std::lock_guard lock(runtime.mutex);
                 if (runtime.ownedServer == owned) runtime.ownedServer.reset();
+                runtime.launchFailures += unanswered;
                 runtime.shadowServer = false; runtime.shadowHandbackProbes = 0;
                 runtime.shadowForBlindness = false;
                 runtime.shadowRequested = false; // A request does not outlive the server it was for.
@@ -774,9 +824,20 @@ OwnedAdbServer::EnsureResult EnsureAdbServerOnce(const std::atomic<bool>* cancel
         if (!owned->OwnsRunningServer()) {
             if (occupied) return Result::RestartDeferredLiveSession;
             if (ProbeAdbHostVersion(env.port, canceled) == OwnedServerProbe::Responsive) {
+                if (stale()) return Result::Canceled;
+                // A child that never answered (it outlived its readiness
+                // deadline silent, then died: security software that lets
+                // adb.exe run for a few seconds) is a start that failed. The
+                // manager's count is kept with the transport's launch
+                // failures before the manager is dropped, so starts beside
+                // an answering default reach the "cannot start" sentence
+                // instead of spending hand-overs; only OkuFlow's own server
+                // answering resets it.
+                const int unanswered = owned->UnansweredStartsAtRetirement();
                 owned->Stop();
                 std::lock_guard lock(runtime.mutex);
                 if (runtime.ownedServer == owned) runtime.ownedServer.reset();
+                runtime.launchFailures += unanswered;
                 // No private server shadows the default any more: clear what
                 // both hand-back paths clear, so an empty default listing is
                 // not reported as OkuFlow's own server recovering and a
@@ -787,7 +848,9 @@ OwnedAdbServer::EnsureResult EnsureAdbServerOnce(const std::atomic<bool>* cancel
                 return Result::Running;
             }
         }
-        const auto result = owned->EnsureRunning(canceled);
+        if (stale()) return Result::Canceled;
+        const auto result = owned->EnsureRunning(canceled, true, stillWanted);
+        if (result == Result::Canceled && stale()) return Result::Canceled;
         if (result == Result::Launched || result == Result::Restarted) {
             qInfo() << "OkuFlow owned adb is ready on private port" << owned->Port().value_or(0);
         }
@@ -800,6 +863,8 @@ OwnedAdbServer::EnsureResult EnsureAdbServerOnce(const std::atomic<bool>* cancel
     // 2026-11-17). Overridden endpoints never reach this branch.
     const auto defaultProbe = ProbeAdbHostVersion(env.port, canceled);
     CheckCanceled(canceled);
+    if (hooks && hooks->serverRequestStageForTest) hooks->serverRequestStageForTest("default-probed");
+    if (stale()) return Result::Canceled;
     // A start beside the default: its shadow flags are set, and the
     // transport's own start beside a hung default is charged to the
     // hand-over cap, only once the start actually proceeds (not when the
@@ -820,8 +885,10 @@ OwnedAdbServer::EnsureResult EnsureAdbServerOnce(const std::atomic<bool>* cancel
     if (defaultProbe == OwnedServerProbe::Responsive && !listingHung) {
         std::lock_guard lock(runtime.mutex);
         // Rung 4a: a responsive default blind to the phone gets a private
-        // server beside it; whichever lists the phone is used.
-        if (!runtime.shadowRequested || !allowOwnedBootstrap) return Result::Running;
+        // server beside it; whichever lists the phone is used. A session's
+        // own request uses the responsive default whatever start is
+        // requested (see EnsureAdbServer).
+        if (!runtime.shadowRequested || !allowOwnedBootstrap || session) return Result::Running;
         runtime.nextServerStart = {};
         beside = Beside::Blind;
     } else if (defaultProbe == OwnedServerProbe::Unresponsive || listingHung) {
@@ -835,7 +902,40 @@ OwnedAdbServer::EnsureResult EnsureAdbServerOnce(const std::atomic<bool>* cancel
         // is tried again, and one that succeeds ends the hang.
         if (!allowOwnedBootstrap || !confirmed) return listingHung ? Result::Running : Result::BorrowedUnresponsive;
         bool recoveredLegacy = false;
-        if (!hooks && qEnvironmentVariableIsEmpty("OKUFLOW_ADB_PATH")) {
+        // The reclamation runs in production only; a fixture reaches this
+        // branch through its seam, which stands in for the reclamation (it
+        // never runs against the machine's real default port).
+        const bool reclaim = hooks ? static_cast<bool>(hooks->legacyReclaimForTest)
+                                   : qEnvironmentVariableIsEmpty("OKUFLOW_ADB_PATH");
+        bool reclaimAllowed = reclaim;
+        if (reclaim && listingHung) {
+            // Entered on a listing hang while the version answers: the hang
+            // was confirmed by earlier listings, which the legacy
+            // reclamation never looks at again. One fresh listing right
+            // before it: an answer ends the hang (the default recovered: it
+            // is borrowed and listed again) and an adb FAIL reply keeps it
+            // by the existing rules; either way nothing is reclaimed in this
+            // call. Only a listing that stays silent lets the reclamation go
+            // on. (An answer that shows another device in state device is an
+            // answer: never reclaimed.)
+            bool answered = false, answeredFail = false;
+            try {
+                ListAdbEntries(env.port, canceled);
+                answered = true;
+            } catch (const AdbFailReply&) {
+                answeredFail = true;
+            } catch (const std::exception&) {}
+            CheckCanceled(canceled);
+            if (stale()) return Result::Canceled;
+            NoteDefaultListing(!answered, ListenerIdentity(env.port));
+            if (answered) {
+                TraceLine("listing-hung default answers a listing again; not reclaimed");
+                return Result::Running;
+            }
+            if (answeredFail) reclaimAllowed = false;
+        }
+        if (reclaimAllowed) {
+            if (stale()) return Result::Canceled;
             LegacyAdbRecoveryRequest request;
             request.port = env.port;
             request.canceled = canceled;
@@ -846,8 +946,16 @@ OwnedAdbServer::EnsureResult EnsureAdbServerOnce(const std::atomic<bool>* cancel
             request.hasActiveOrStartingPhoneSessions = [&runtime] {
                 std::lock_guard lock(runtime.mutex); return !runtime.occupied.empty();
             };
-            const auto result = TryReclaimLegacyBundledAdbServer(request);
-            if (result.status == LegacyAdbRecoveryStatus::Canceled) return Result::Canceled;
+            request.stillWanted = stillWanted;
+            LegacyAdbRecoveryResult result;
+            if (hooks) {
+                hooks->legacyReclaimForTest();
+                result.status = LegacyAdbRecoveryStatus::NotManaged;
+                result.diagnostic = "fixture seam";
+            } else {
+                result = TryReclaimLegacyBundledAdbServer(request);
+            }
+            if (result.status == LegacyAdbRecoveryStatus::Canceled) { stale(); return Result::Canceled; }
             if (result.status == LegacyAdbRecoveryStatus::Busy) return Result::BorrowedUnresponsive;
             recoveredLegacy = result.status == LegacyAdbRecoveryStatus::Recovered;
             qInfo() << "Legacy OkuFlow USB recovery:" << QString::fromStdString(result.diagnostic);
@@ -863,7 +971,13 @@ OwnedAdbServer::EnsureResult EnsureAdbServerOnce(const std::atomic<bool>* cancel
             std::lock_guard lock(runtime.mutex);
             if (!recoveredLegacy) {
                 if (!runtime.shadowRequested) {
-                    if (!runtime.doctor.HandOverAllowed()) return Result::BorrowedUnresponsive;
+                    // At the hand-over cap no private server starts beside
+                    // it. A listing hang is borrowed instead (its version
+                    // answers): its listing is tried again each cycle and
+                    // one that succeeds ends the hang, so the sentence the
+                    // cap leads to does not outlive a default that recovered.
+                    if (!runtime.doctor.HandOverAllowed())
+                        return listingHung ? Result::Running : Result::BorrowedUnresponsive;
                     chargeHandOver = true;
                 }
                 beside = Beside::Hung;
@@ -876,6 +990,8 @@ OwnedAdbServer::EnsureResult EnsureAdbServerOnce(const std::atomic<bool>* cancel
         NoteDefaultProbe(defaultProbe, std::nullopt);
     }
     if (!allowOwnedBootstrap) return Result::NotReady;
+    // Right before a start (beside the default, or the first engagement).
+    if (stale()) return Result::Canceled;
     // Nothing to launch (missing or quarantined adb.exe) is a launch
     // failure at once, without arming the start throttle: the sentence must
     // not wait for it.
@@ -905,7 +1021,11 @@ OwnedAdbServer::EnsureResult EnsureAdbServerOnce(const std::atomic<bool>* cancel
             if (chargeHandOver) runtime.doctor.NoteHandOver(episode);
         }
     }
-    if (owned) return owned->EnsureRunning(canceled);
+    if (owned) {
+        const auto result = owned->EnsureRunning(canceled, true, stillWanted);
+        if (result == Result::Canceled) stale();
+        return result;
+    }
     owned = CreateOwnedAdbServer(executable, hooks ? hooks->ownedServerArguments : std::vector<std::wstring>{},
                                  hooks ? hooks->ownedPolicy : std::nullopt);
     {
@@ -917,7 +1037,8 @@ OwnedAdbServer::EnsureResult EnsureAdbServerOnce(const std::atomic<bool>* cancel
         owned = runtime.ownedServer;
     }
     CheckCanceled(canceled);
-    const auto result = owned->EnsureRunning(canceled);
+    const auto result = owned->EnsureRunning(canceled, true, stillWanted);
+    if (result == Result::Canceled) stale();
     if (result == Result::Launched || result == Result::Restarted)
         qInfo() << "OkuFlow owned adb is ready on private port" << owned->Port().value_or(0);
     return result;
@@ -925,7 +1046,7 @@ OwnedAdbServer::EnsureResult EnsureAdbServerOnce(const std::atomic<bool>* cancel
 void RequireAdbServer(const std::atomic<bool>* canceled, const std::string& wanted)
 {
     using Result = OwnedAdbServer::EnsureResult;
-    const auto result = EnsureAdbServer(canceled, PhoneServerIntent::PhoneUse, wanted);
+    const auto result = EnsureAdbServer(canceled, PhoneServerIntent::PhoneUse, wanted, {}, true);
     CheckCanceled(canceled);
     if (Runtime().shutdownRequested.load()) throw std::runtime_error("Phone camera canceled");
     if (result != Result::Running && result != Result::Launched && result != Result::Restarted)
@@ -2188,12 +2309,17 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         if (const auto hooks = Hooks(); hooks && hooks->afterHandBackCheckForTest) hooks->afterHandBackCheckForTest();
         CheckCanceled(canceled);
         if (stale()) return dropped;
+        // A private server retired without ever answering (the hand-back of
+        // a silent one) is a start that did not work: kept with the launch
+        // failures (see the transport's yield).
+        const int unanswered = owned->UnansweredStartsAtRetirement();
         owned->Stop();
         if (const auto hooks = Hooks(); hooks && hooks->afterPrivateServerRetiredForTest)
             hooks->afterPrivateServerRetiredForTest();
         {
             std::lock_guard lock(runtime.mutex);
             if (runtime.ownedServer == owned) runtime.ownedServer.reset();
+            runtime.launchFailures += unanswered;
             runtime.shadowServer = runtime.shadowForBlindness = runtime.shadowRequested = false;
             runtime.shadowHandbackProbes = 0;
             // Like the transport's own hand-back: a default that hangs
@@ -2215,12 +2341,20 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         if (!owned || (o.shadowRunning && o.serverProbe != PhoneServerProbe::Unresponsive))
             return "no owned server to restart";
         if (stale()) return dropped;
-        const auto result = owned->Restart(canceled);
+        const auto result = owned->Restart(canceled, stillWanted);
         using R = OwnedAdbServer::EnsureResult;
         if (result == R::Restarted || result == R::Launched) {
             return "owned server restarted on private port " + std::to_string(owned->Port().value_or(0));
         }
-        if (result == R::RestartDeferredLiveSession) return "owned restart deferred: a live session uses it";
+        if (result == R::Canceled && stale()) return dropped;
+        if (result == R::RestartDeferredLiveSession) {
+            // Nothing was restarted: the restart is given back (the spacing
+            // stays as reserved), so a live session does not use up the
+            // restarts whose end is the re-plug sentence.
+            std::lock_guard lock(runtime.mutex);
+            runtime.doctor.NoteRestartDeferred(decision.episode);
+            return "owned restart deferred: a live session uses it";
+        }
         if (result == R::Throttled) return "owned restart throttled";
         return "owned restart did not complete";
     }
@@ -2236,8 +2370,15 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
             runtime.nextServerStart = {};
             if (identity) runtime.defaultIdentity = identity;
         }
-        const auto result = EnsureAdbServer(canceled, PhoneServerIntent::PhoneUse, target);
+        const auto result = EnsureAdbServer(canceled, PhoneServerIntent::PhoneUse, target, stillWanted);
         using R = OwnedAdbServer::EnsureResult;
+        if (result == R::Canceled && stale()) {
+            // Dropped inside the server request: the start this decision
+            // asked for does not outlive it.
+            std::lock_guard lock(runtime.mutex);
+            runtime.shadowRequested = false;
+            return dropped;
+        }
         if (result == R::LaunchFailed) {
             // OkuFlow's own adb.exe could not be started beside the default
             // (missing, quarantined, dying at once): counted toward the
@@ -2251,6 +2392,16 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
             ? "private server started beside the default" : "private server beside the default is not ready yet";
     }
     case A::AskDefaultServerToExit: {
+        // A live or starting phone session is registered: the server it uses
+        // is never stopped. Which listener a session's sockets reach is not
+        // recorded (OkuFlow's endpoint can change while a session runs, and
+        // a session opened on the default before a private server started
+        // keeps its sockets there), so any registered session refuses the
+        // stop, as an aborted one (bounded by abortedStopCap).
+        const auto sessionRegistered = [&] {
+            std::lock_guard lock(runtime.mutex);
+            return !runtime.occupied.empty();
+        };
         // An ask that sends no host:kill is not remembered as sent: no
         // termination follows it as if the request had been ignored, and
         // it does not use up one of the episode's asks.
@@ -2269,6 +2420,7 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         const auto port = DefaultPort();
         if (const auto hooks = Hooks(); hooks && hooks->beforeDefaultStopForTest) hooks->beforeDefaultStopForTest();
         if (stale()) return drop();
+        if (sessionRegistered()) return notSent("kept: a phone session is registered");
         // Like termination, asking to exit needs the Windows ADB interface
         // at execution time: a phone unplugged since the decision is no
         // reason to stop anything.
@@ -2307,18 +2459,28 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         request.expectedCreation = listener.identity.created;
         request.terminateIfAlive = false;
         request.canceled = canceled;
-        request.stillWanted = stillWanted;
+        request.stillWanted = [&] { return !stale() && !sessionRegistered(); };
+        if (const auto hooks = Hooks(); hooks && hooks->afterHostKillConnectForTest)
+            request.afterHostKillConnectForTest = hooks->afterHostKillConnectForTest;
         request.hostKillWait = std::chrono::milliseconds(policy.hostKillWaitMs);
         if (stale()) return drop();
+        if (sessionRegistered()) return notSent("kept: a phone session is registered");
         { std::lock_guard lock(runtime.mutex); runtime.askedIdentity = listener.identity; }
         const auto result = TryStopDefaultAdbServer(request);
         if (!result.hostKillDelivered && stale()) return drop();
+        if (!result.hostKillDelivered && result.status == DefaultAdbStopStatus::Canceled && sessionRegistered())
+            return notSent("kept: a phone session is registered");
         NoteStopOutcome(result.status, listener, decision.episode);
         if (result.status == DefaultAdbStopStatus::Stopped) return "default server exited after host:kill";
         if (!result.hostKillDelivered) return notSent("default server ask: " + result.diagnostic);
         return "default server ask: " + result.diagnostic;
     }
     case A::TerminateDefaultServer: {
+        // As for the ask: a registered phone session refuses the stop.
+        const auto sessionRegistered = [&] {
+            std::lock_guard lock(runtime.mutex);
+            return !runtime.occupied.empty();
+        };
         if (DefaultIsUserEndpoint() || !o.phoneWanted) return "refused: user endpoint or no phone intent";
         const auto port = DefaultPort();
         // Dropped for a changed source: the attempt is given back uncounted.
@@ -2342,6 +2504,7 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
             runtime.doctor.NoteTerminationAborted(decision.episode, decision.hostKillAlreadySent);
             return std::string(reason);
         };
+        if (sessionRegistered()) return aborted("kept: a phone session is registered");
         if (o.serverProbe == PhoneServerProbe::Responsive || o.shadowRunning) {
             bool answeredFail = false;
             const auto listed = ListDefaultEntries(canceled, &answeredFail);
@@ -2424,11 +2587,16 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
         // listener in this episode; any other listener is asked first.
         request.sendHostKillFirst = !(decision.hostKillAlreadySent && askedThisListener);
         request.canceled = canceled;
-        request.stillWanted = stillWanted;
+        request.stillWanted = [&] { return !stale() && !sessionRegistered(); };
+        if (const auto hooks = Hooks(); hooks && hooks->afterHostKillConnectForTest)
+            request.afterHostKillConnectForTest = hooks->afterHostKillConnectForTest;
         request.hostKillWait = std::chrono::milliseconds(policy.hostKillWaitMs);
         if (stale()) return drop();
+        if (sessionRegistered()) return aborted("kept: a phone session is registered");
         const auto result = TryStopDefaultAdbServer(request);
         if (!result.hostKillDelivered && !result.terminated && stale()) return drop();
+        if (!result.terminated && result.status == DefaultAdbStopStatus::Canceled && sessionRegistered())
+            return aborted("kept: a phone session is registered");
         NoteStopOutcome(result.status, listener, decision.episode);
         return "default server stop: " + result.diagnostic;
     }
@@ -2450,9 +2618,30 @@ std::string ExecuteLinkAction(const PhoneLinkDecision& decision, const PhoneLink
     return {};
 }
 
+// A cycle whose request lost its authority (the user chose another source
+// while it ran) observes a source the user left: it does not reach the
+// doctor, so it neither decides nor reserves anything of the episode (a
+// pick of the phone that was also an event must find its "at once" budgets
+// untouched). The report keeps the last diagnosis and asks for the next
+// cycle at once.
+void DropStaleCycle(PhoneLinkReport& report)
+{
+    {
+        auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
+        report.decision.diagnosis = runtime.doctor.LastDiagnosis();
+        report.decision.episode = runtime.doctor.Episode();
+    }
+    report.decision.action = PhoneLinkAction::None;
+    report.decision.nextPollMs = NowMs();
+    report.decision.diagnosisChanged = false;
+    report.actionResult = "dropped before its decision: the source changed";
+    TracePhoneLink("cycle dropped before its decision: the source changed");
+}
+
 void RunPhoneLinkLadder(const PhoneLinkRequest& link, const std::string& preferredSerial, const DiscoveryFacts& facts,
                         const std::atomic<bool>* canceled, PhoneLinkReport& report)
 {
+    if (link.IntentStale()) { DropStaleCycle(report); return; }
     PhoneLinkObservation o;
     o.phoneWanted = link.phoneWanted;
     o.captureAbandoned = link.captureAbandoned;
@@ -2472,12 +2661,17 @@ void RunPhoneLinkLadder(const PhoneLinkRequest& link, const std::string& preferr
     bool shadow = false, confirmed = false, refused = false;
     std::optional<AdbListenerIdentity> refusedListener;
     std::shared_ptr<OwnedAdbServer> ownedManager;
+    // The listener on the default port now: a confirmation recorded for
+    // another listener is not this one's.
+    const auto currentDefault = ListenerIdentity(DefaultPort());
     {
         auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
         shadow = runtime.shadowServer;
         // Hung by its version probes, or by its listings while its version
-        // answers (the stop re-verifies the listener's identity).
-        confirmed = runtime.borrowedConfirmed || runtime.listingConfirmed;
+        // answers, each confirmed for the listener that is there now (the
+        // stop re-verifies the listener's identity again).
+        confirmed = (runtime.borrowedConfirmed && runtime.borrowedFailureIdentity == currentDefault) ||
+                    (runtime.listingConfirmed && runtime.listingFailureIdentity == currentDefault);
         refused = runtime.doctor.DefaultStopRefused();
         refusedListener = runtime.refusedListener;
         o.serverLaunchFailures = runtime.launchFailures;
@@ -2655,10 +2849,16 @@ void RunPhoneLinkLadder(const PhoneLinkRequest& link, const std::string& preferr
     CheckCanceled(canceled);
 
     PhoneLinkDecision decision;
+    bool staleNow = false;
     {
+        // Checked under the doctor's lock: a source change the app makes
+        // before it raises an event (a pick) is seen here, or the event is
+        // applied after this decision (it then renews what was reserved).
         auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
-        decision = runtime.doctor.Decide(o, NowMs());
+        staleNow = link.IntentStale();
+        if (!staleNow) decision = runtime.doctor.Decide(o, NowMs());
     }
+    if (staleNow) { report.observation = o; DropStaleCycle(report); return; }
     report.observation = o;
     report.decision = decision;
     report.targetSerial = target;
@@ -2700,10 +2900,14 @@ std::vector<CameraDescriptor> PhoneCameraTransport::Enumerate(
                 if (status) *status = PhoneDiscoveryStatus::EndpointUnsupported;
                 return;
             }
+            std::function<bool()> stillWanted;
+            if (link) stillWanted = [link] { return !link->IntentStale(); };
             const auto readiness = EnsureAdbServer(canceled, serverIntent,
-                link && !link->targetSerial.empty() ? link->targetSerial : recoverySerial);
-            ObserveServerIdentity();
+                link && !link->targetSerial.empty() ? link->targetSerial : recoverySerial, stillWanted);
             using Result = OwnedAdbServer::EnsureResult;
+            // Dropped for a source the user left: no listing this cycle.
+            if (readiness == Result::Canceled && link && link->IntentStale()) return;
+            ObserveServerIdentity();
             const bool ownServer = Endpoint().ownedByThisProcess;
             {
                 // Repeated launch failures of OkuFlow's own adb are named.
@@ -2834,7 +3038,7 @@ std::vector<CameraDescriptor> PhoneCameraTransport::Enumerate(
     } catch (const AdbServerUnavailable&) {
         // Refused, but a listener in the table that does not accept (full
         // accept queue of a frozen adb) hangs too.
-        const auto listener = LookupListener(Endpoint().port).state;
+        const auto listener = LookupListener(Endpoint().port, true).state;
         const bool present = listener == ListenerState::Found || listener == ListenerState::Unopenable;
         facts.probe = present ? PhoneServerProbe::Unresponsive : PhoneServerProbe::NoListener;
         if (status && !(canceled && canceled->load()))
