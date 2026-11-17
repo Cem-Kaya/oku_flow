@@ -150,6 +150,19 @@ void SetLiveText(QWidget* widget,
     Announce(widget, accessibleText, politeness);
 }
 
+void AnnounceLiveText(QWidget* widget,
+                      const QString& text,
+                      LivePoliteness politeness)
+{
+    if (!widget) {
+        return;
+    }
+    Q_ASSERT(QCoreApplication::instance());
+    Q_ASSERT(QThread::currentThread() ==
+             QCoreApplication::instance()->thread());
+    Announce(widget, TranslateUi(text), politeness);
+}
+
 void SetLiveTextCoalesced(QWidget* widget,
                           const QString& text,
                           LivePoliteness politeness,

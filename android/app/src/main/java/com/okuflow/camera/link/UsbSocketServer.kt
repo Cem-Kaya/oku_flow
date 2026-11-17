@@ -23,7 +23,7 @@ class UsbSocketServer(
     private val onListenerFailed: () -> Unit = {},
     private val onDisconnect: (String) -> Unit,
 ) : AutoCloseable {
-    private val server = LocalServerSocket("okuflow_camera")
+    private val server = LocalServerSocket(SOCKET_NAME)
     private val running = AtomicBoolean(true)
     private val sockets = ConcurrentHashMap.newKeySet<LocalSocket>()
     private val lock = Any()

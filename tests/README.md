@@ -992,6 +992,283 @@ synthetic phone session admits the bounded command before split stop, retires
 its token at Begin and rejects later admission. These rows establish command
 ownership/protocol behavior, not real-phone light or camera acceptance.
 
+`phone_link_doctor` is model-free: every diagnosis (table-driven), every event
+reset, every budget, and the owner's sequences (sleep and resume, pull and
+re-plug within a second, unauthorized then authorized, offline fixed by a
+reconnect, offline needing a server restart, blind owned server, blind borrowed
+server with and without other devices, locked phone, killed app, paused, busy
+with another host, two instances). The ladder rows of `phone_camera_contract`
+drive the same sequences end to end through `Enumerate`/`Start` with the fake
+adb server and the owned-child fixture: `host:kill` reaches only a responsive
+blind default that serves no other device, never an overridden endpoint; a hung
+fixture default is terminated only through its exact listener handle; a
+listener in the test process itself is never terminated; a manual pick renews
+the launch budget; resume voids pre-sleep transport identity; `Start` waits for
+a listed phone to become ready. These were changed deliberately with the
+ladder: the launch command now carries the host-launch extra after a wake key,
+and `phone_retry_policy` encodes 1/2/3/5/10 s instead of 5/10/20/60 s.
+Iteration 2 rows: the default-port stand-in is an out-of-process copy of the
+owned-child fixture named `adb.exe` (no image hook), so the production image
+rule is tested, and the same copy under its own name proves a non-`adb.exe`
+server is never asked or terminated. The user-endpoint guard is the real
+`ANDROID_ADB_SERVER_PORT`. Rows cover an event during a hung-default takeover,
+a shadowed default that later lists the phone, a default appearing beside a
+blind private server, one that comes back after every `host:kill` (bounded),
+a connect-stalled listener with a full accept queue, an unopenable listener,
+`host:kill` aborted when the re-list fails or the phone appears, a UI-thread
+event while a slow owned launch holds the manager, the start grace, the
+chosen phone as target, `reconnect-offline` only on OkuFlow's own server, no
+serial in the trace, adb that cannot be launched, the first automatic start,
+leftover-instance classification and exact termination of windowless
+registered fixture instances, and the proven adb-child fallback.
+Iteration 3 rows: a phone kept offline by another default-port adb from
+start-up and after a hand-back is taken over (fixture `--fixture-offline-file`),
+a slow-but-listing default is never stopped (`--fixture-slow-version`), the
+interface is re-checked when a stop runs, a leftover that cannot be opened stops
+nothing (fixture `spawn`), a window appearing before termination keeps the
+leftover, the registered UI thread's windows decide (`instance-windows`), the
+production sibling scan runs through `Enumerate` against a fixture image and tag
+(stop, plausibility gate, adb-child fallback, unregistered sibling never ending
+the ladder), a paused companion on a locked phone and a manual pick with the
+companion paused launch once per event (fake `LaunchMode::Paused`), a missing
+adb is named without a renewing pick and an adb killed at start
+(`--fixture-exit-at-start`) reaches the same sentence, Windows answering
+"unknown" for the interface, a companion camera failure, "any phone" with
+another attached phone, and a hung-default shadow never handed back to a
+default that only answers. `phone_camera_contract` now runs about seven
+minutes (246 s after iteration 4, 322 s after iteration 5, 410 s after
+iteration 6, 474 s after iteration 8, 495 s after iteration 9); its CTest limit is 720 s (540 s left 45 s of margin after iteration 9; the limit is a hang guard, raised openly by the orchestrator on 2026-11-17, and splitting the suite by function list is the better long-term answer once it grows further). Its longest rows are bounded by production budgets (the 5 s camera
+connection window of each start, 2 s shell health probes on a stalled
+transport, the private server's 5 s launch back-off, 1.1 s slow version
+replies), not by test waits, so they were not shortened. It was not split into
+a second CTest entry: Qt Test has no switch to exclude functions, so a split
+would list every other row by name, and the second entry would also have to be
+added to the capability requirements in `scripts/run_test_gate.ps1` so that it
+cannot go missing; that is more than a registration change.
+Iteration 4 rows: a default that lists the phone "device" and never answers
+its shell (`--fixture-stalled-shell`) is taken over without a hand-back; a
+paused companion whose process dies is relaunched on the same ladder; with
+Windows answering "unknown" another adb is never asked to exit or stopped
+(blind default and hung default end in the re-plug sentence) and a first start
+wants a listed USB phone. The doctor test `blindWithoutWindowsInterfaceNeverEscalates`
+was renamed `windowsCannotTellNeverStopsAnotherServer` and changed deliberately.
+The private server started beside a hung default counts toward the hand-over
+cap and is handed back at the cap (`privateServerBesideAHungDefaultCountsTowardTheHandOverCap`,
+policy hook `handOverCap` 0 and 1). `leftoverIsJudgedByItsUiThread` (was
+`leftoverIsJudgedByEveryTopLevelWindow`, changed deliberately): the fixture's
+recorded UI thread decides, not a helper thread's hidden window. Section B
+rows: a leftover stop that ended IdentityChanged is retried (hook
+`siblingVisibleWindowForTest`); the hung-default shadow is handed back only for
+the wanted phone; a hung default whose listing answers FAIL is never stopped;
+`host:kill` re-checks the interface; a slow default serving another device is
+named. Native slot `differentPhoneSentenceIsNotShownBeforeTheSwitch`; doctor
+rows `ownedOfflineLadderStartsFreshAfterForeignReconnects`,
+`slowDefaultServingAnotherDeviceIsNamed`.
+Iteration 5 rows: a default whose shell is silent until OkuFlow's own server
+runs beside it and then answers (`--fixture-stalled-shell-file`, stalled while
+the file exists) is handed back to without `host:kill`
+(`stalledPhoneThatRecoversOnTheDefaultIsHandedBack`). Doctor row
+`pausedCompanionThatKeepsDyingIsRelaunchedAtTheOrdinarySpacing`: only the first
+hold released by the app's death in an episode relaunches at once. Budgets:
+`hangRightAfterAHandBackMeetsAPrivateServerAgain` (no 30 s throttle after the
+transport's own hand-back), `privateServerStartThatCannotHappenIsNotCharged`
+(no executable yet, cap 1), `abortedTerminationsDoNotSpendTheTerminationCap`;
+doctor rows `handBackDeferredByALiveSessionIsNotCounted`,
+`abortedTerminationDoesNotSpendTheBudget`. The doctor rows
+`defaultThatAlternatelyListsAndLosesThePhoneIsNamed` and
+`handOverCapEndsWhereThePhoneIsListed` were changed deliberately: they note each
+executed hand-back (`NoteHandOver`) as the transport does. Shell facts end with
+the whole line `OKUFLOW_FACTS_END` (the fake's replies and
+`shellFactsParserIsConservative` changed deliberately from `END`);
+`shellFactsAreReadToTheirSentinelLine` sends output containing END first and the
+processes in a second chunk. Changed deliberately in iteration 6:
+`abortedTerminationsDoNotSpendTheTerminationCap` (contract, policy hook
+`abortedStopCap` = termination cap + 2) and
+`abortedTerminationDoesNotSpendTheBudget` (doctor) now require the end of the
+aborted loop: the other-program sentence after the aborted-termination cap,
+standing at the user-wait cadence until the server recovers or goes away.
+`slowDefaultWithoutItsOtherDeviceEndsInTheSentence` runs from the end of
+`slowDefaultVerdictEndsWhenTheOtherDeviceGoes` into that end.
+`keptAskIsNotFollowedByATermination` (the stalled phone's shell answers at the
+ask, the next listing misses the phone; one ask per episode) and the doctor row
+`askThatSendsNothingIsNotRememberedAsSent`: an ask that sent no `host:kill` is
+neither followed by a termination nor counted as an ask.
+`stalledPhoneThatRecoversWithACrlfReplyIsHandedBack` runs the iteration 5
+recovery row with `--fixture-shell-crlf` (the echo ends with CR LF): any reply
+to the stall re-check is an answer.
+`stalledPhoneThatRecoversBeforeTheTerminationIsHandedBack` covers the same
+re-check on the termination path: the shell is silent at the ask (host:kill is
+sent and ignored) and answers when the termination runs; it is aborted, the
+server keeps running and USB is handed back.
+`deadPrivateServerThatYieldsToTheDefaultClearsTheShadow` (the private server
+beside a hung default dies, the default recovers with an empty listing: Listed,
+not "own server recovering", and a new hang meets a private server at once),
+`requestedPrivateServerThatCannotStartYetStartsLater` (the doctor's start beside
+a blind default with no executable yet, hand-over cap 1: started once the
+executable appears) and `handOverCountedAfterAnEventIsDropped` (hook
+`afterPrivateServerRetiredForTest` raises an event during the ladder's
+hand-back; cap 1) with the doctor row `handOverOfAnEarlierEpisodeIsDropped`. Doctor row
+`deathWithAHangingListenerKeepsTheImmediateRelaunch`: a decision in which the app
+process is gone and the listener hangs does not spend the episode's immediate
+relaunch. Doctor rows
+`userEndpointThatDoesNotListThePhoneEndsInTheReplugSentence` and
+`hungUserEndpointEndsInTheReplugSentence`; `overriddenEndpointIsNeverStopped`
+was changed deliberately (WaitForUser is now allowed; no takeover action).
+`slowDefaultVerdictEndsWhenTheOtherDeviceGoes`: a slow default's other device
+(`--fixture-device-file`) goes away without an event and the other-program
+verdict ends. `recordedUiThreadWithoutAWindowIsNotALeftover` (fixture mode
+`instance-nowindow`): a registered instance whose recorded UI thread owns no
+window stays Pending; its exit signal still proves a leftover.
+`hungDefaultReasonUsesTheSameServesTest` (`--fixture-slow-version-file`): the
+pre-termination listing's reason uses the same serves test as the other
+pre-checks. The native slot `phoneSentenceIsShownAndSpokenForEveryDiagnosis`
+also checks that the notification is announced once across later label
+refreshes (its announcement time does not change after the live region's 5 s
+duplicate window).
+Iteration 9 rows: `staleIntentInsideTheServerRequestStartsNothing` (hook
+`linkStageForTest` revokes at "locked" or "default-probed" inside the start
+beside the default), `hostKillIsNotWrittenAfterTheSourceChanged` (hook
+`afterHostKillConnectForTest`, the fixture's kill log stays empty),
+`staleCycleLeavesTheEpisodeBudgetToTheNextCycle` (revoked at "decide":
+reconnect, restart, hand-back and launch still act at once in the next cycle),
+`privateServerThatDiesAfterItsReadinessBesideADefaultIsCounted` (owned child
+with `--fixture-slow-version-file` and `--fixture-exit-on-kill`; the test sends
+it `host:kill` once it went silent: no fixture change),
+`legacyReclaimOfAListingHangNeedsAFreshSilentListing` (seam
+`legacyReclaimForTest` stands in for the production-only reclamation),
+`listingHangOfOneListenerIsNotAnothers` (listener rows rewritten to a decoy
+`adb.exe`), `listingHungDefaultAtTheHandOverCapIsListedAgain`,
+`silentPrivateServerIsHandedBackToADefaultThatListsThePhone`,
+`adbThatCannotStartBesideADefaultEndsOnceItCanStart` (an event drops the
+pending start request first, so only the rung's retry can end the sentence),
+`stopsAreRefusedWhileAPhoneSessionIsLive` (hook `phoneSessionLiveForTest`;
+named `...IsRegistered` before round 10), `onlyALivePhoneSessionForbidsAStop` (the pure
+rule: registered and a frame within 2 s; a starting or reconnecting session
+does not forbid a stop), `refusedConnectWithOnlyAnIpv6RowIsNoListener`
+(an injected `::` row), and the session start through the default added to
+`adbThatCannotStartBesideABlindDefaultIsNamed`. The listing-failure rows use
+`listingMode` 3 (closed at once) where a hang's time-out adds nothing.
+After round 10: `FakePhoneAdb` can stream (`streaming`: a session's control
+hello gets a token, its video channel is bound, and after the start command
+the four access units of `data/phone-camera.h264` are sent in a loop from the
+fake's own thread) and refuse the companion at once (`companionRefuses`); a
+real `PhoneCameraTransport` session then decodes frames in the contract suite
+(`ScopedMediaFoundation`). Rows:
+`interruptedPrivateServerStartIsNotCountedAtRetirement` (owned manager: a
+start cut short inside its readiness wait counts nothing at retirement; a wait
+that ran out, or a probe past the deadline, counts one),
+`webcamReleaseOfAStartingPrivateServerCountsNothing` (no launch failure, and
+the empty default listing reads Listed, not OkuFlow's server recovering),
+`onlyALiveRealSessionKeepsAConfirmedHungDefault` (a real session registered
+without a frame lets the confirmed listing-hung default be terminated; one
+decoding frames keeps it, and the next cycle reads Connected; listener rows
+rewritten to a decoy `adb.exe`),
+`aSessionThatRegistersRightAfterALiveOneIsNotLive` (a decoded frame makes a
+session live; a session registering right after the last one ended is not),
+`terminationCanceledWithoutAStopIsGivenBack` (a stale intent refunds the
+attempt, while repeated transient live-session vetoes reach the aborted-stop
+cap), and `transportReconnectIsNotWrittenAfterTheSourceChanged` (offline and
+stalled device, with an immediate retry proving the stalled reservation was
+returned). The back-to-back session row asserts the cleared timestamp and the
+silent session fixture uses an extended connect budget. Round 11 adds
+`defaultStopKeepsAListenerThatReplacedTheOneListed` (ask and termination),
+`offlineReconnectUsesTheObservedTransport` (ready, endpoint swap and listener
+swap), and `companionProblemTraceUsesOnlyFixedCodes` (probe and hello error).
+Doctor:
+`silentPrivateServerBesideADefaultThatServesThePhoneIsHandedBack`,
+`restartDeferredForALiveSessionIsGivenBack`. Legacy:
+`requestThatLostItsAuthorityWritesNoHostKill`. Native:
+`aSourceChangeRevokesTheRunningLadder` now runs a real discovery cycle held at
+"decide" while the webcam is picked (it only checked a counter before),
+`aPickOfTheChosenPhoneRevokesNothing`, `aHiddenLivePhoneSessionIsConnectedForTheDoctor`
+(both in `native_app_phone_link_offscreen`).
+Iteration 8 rows: `listingFailureOfTheDefaultIsAConfirmedHang` (the in-process
+fake answers host:version while both listing forms hang, answer FAIL or
+close: a private server starts beside it and the hung-default rules end it),
+`ownedServerWhoseListingFailsIsRestartedThenNamed` (`--fixture-fail-file` on
+OkuFlow's own server: three restarts, then the re-plug sentence),
+`ownedAdbThatNeverAnswersIsNamed` (`--fixture-slow-version-file`: version
+answers after 1100 ms, past the 1000 ms probe budget, until the file goes;
+hook `ownedPolicy` shortens the start grace), `adbThatCannotStartBesideABlindDefaultIsNamed`
+(missing or at-once exiting executable beside a blind default),
+`staleIntentDropsTheLadderSideEffects` (the source changes at
+`beforeDefaultStopForTest`, `beforeShadowStartForTest` and the new
+`beforeCompanionLaunchForTest`: no `host:kill`, termination, start or shell
+command), `olderDefaultThatListsOnlyTextIsHandedBack` (`textOnly`),
+`handBackWaitsForASessionServerRequest` (new hook `afterHandBackCheckForTest`),
+`silentDefaultBesideOkuFlowsServerIsStoppedNotSpent` and
+`anyAddressDefaultListenerIsTerminatedThroughItsExactHandle` (the listener-row
+seam `SetTcpListenerRowsTransformForTest` maps the in-process fake to a decoy
+`adb.exe`, or rewrites a fixture's loopback row as an any-address row; tests
+never bind every address, which would show a firewall prompt),
+`adbListenerRowsPreferLoopbackThenAnyAddress`,
+`defaultGoneAtEveryAskEndsInTheSentenceEndToEnd` (`reopenAfterGone`).
+`ownedWiringHungStartupReportsAutomaticRecovery` was changed deliberately: it
+now requires the AdbCannotStart end instead of endless recovery. Doctor rows
+cover the owned listing rung, the AdbCannotStart end beside a default, the
+termination cap without a confirmation, the reservation spacing, resume
+coalescing, the flapping cable (not over a phone that is listed ready or
+unauthorized), the start beside an answering default tried again while
+"adb cannot start" stands (`adbThatCannotStartBesideADefaultIsTriedAgain`)
+and the standing re-plug sentence;
+`abortedStopsOfOneRungDoNotEndTheOther` waits the ceiling (changed
+deliberately: given-back attempts keep their spacing). Native slots
+`resumeKeepsAPhoneThatDeliversWithoutPresenting` and
+`aSourceChangeRevokesTheRunningLadder`; the phone link slots run as the CTest
+entry `native_app_phone_link_offscreen` (opt-in native fixture configure, like
+every native slot). Android JVM rows `aListenerThatDiesAfterBindingIsBoundAgain`
+and `pauseWithdrawsTheLockScreenVisibilityOfAComputerLaunch`.
+Iteration 7 rows: the native slot
+`discoveryKeepsRunningWhileAPickWaitsForARecording` starts a camera with
+manual origin while a recording is open (the start is only queued until the
+recording ends) and requires a new discovery to be dispatched and its result
+consumed meanwhile. The fixture's `CameraPending` now also counts a queued
+start (`pendingCameraStart_`), as `CameraPendingDump` already printed it.
+`abortedTerminationsDoNotSpendTheTerminationCap` goes on past the recovery:
+the default answers its version probes again but stays blind beside
+OkuFlow's private server, and after the takeover grace it is asked to exit
+(not named at once by the hung branch's aborted stops). Doctor row
+`abortedStopsOfOneRungDoNotEndTheOther` covers both directions; the existing
+doctor calls of `NoteTerminationAborted` now name the hung branch.
+`requestOfADefaultThatWentAwayDoesNotOutliveIt` (new hook
+`beforeShadowStartForTest` stops the default between the doctor's private
+server decision and its start, with no executable yet; the default comes back
+responsive in the same episode) and `requestIsDroppedWhenUsbIsReleasedForAWebcam`
+(a start request held back by the missing executable, then a `ReleaseForWebcam`
+call): in both, a later phone-use discovery starts no private server.
+`askThatFindsTheDefaultGoneIsGivenBack`: the default is the in-process fake,
+which closes its listener before it answers the ask's pre-ask listing
+(`goneAtNextConnection`), so the ask finds it already gone; with one ask and
+one aborted stop per episode, another blind default that appears beside
+OkuFlow's server is still asked to exit. Doctor row
+`askThatFindsTheDefaultGoneIsGivenBackUncounted`. Doctor row
+`defaultThatIsGoneAtEveryAskEndsInTheSentence`: only the first such ask of an
+episode is uncounted; a default that is gone at every ask (a listener the
+lookup cannot identify) gets the aborted-stop cap plus one asks, then the
+other-program sentence at the user-wait cadence, and a new event gives one
+uncounted ask again.
+`ownHandBackCountedAfterAnEventIsDropped`: the transport's own hand-back of the
+private server it started beside a hung default, with an event raised through
+`afterPrivateServerRetiredForTest` (cap 1); the default that hangs again still
+gets a private server.
+`phone_camera_tests` and `capture_shutdown_tests` (both link `phone_camera.cpp`)
+install adb test hooks on a private closed loopback port (Windows ADB interface
+reported absent) in `initTestCase`, and the scoped fixtures of
+`phone_camera_tests` (`FakePhoneAdb`, `ScopedOwnedAdbHooks`, `ScopedLinkHooks`)
+restore that default instead of clearing the hooks
+(`tests/phone_adb_test_guard.hpp`): a test without hooks of its own cannot
+reach the machine's default adb port. `aTestWithoutHooksReachesOnlyTheClosedPort`
+and `phoneCodeReachesOnlyTheClosedAdbPort` check it with a listener on the
+closed port and a decoy named by `ADB_SERVER_SOCKET`, so a failing check never
+reaches port 5037 either.
+`phone_link_text` (headless) checks one sentence per diagnosis and that every
+sentence is translated in all 24 catalogs. The native slot
+`phoneSentenceIsShownAndSpokenForEveryDiagnosis` delivers every verdict
+through the real `PollPhoneCameraDiscovery` path (no direct label update) and
+checks that a passing notification does not replace the phone sentence. The opt-in native fixture slot
+`resumeAndDeviceRemovalReachTheApplication` sends synthetic `WM_POWERBROADCAST`
+and ADB removal messages to the real application object offscreen.
+
 The remaining `phone_camera_contract` rows check USB connection-type protobuf parsing without
 a Windows bus path, malformed lengths/varints, saved webcam/phone/lens-fallback
 selection and actual NV12 output from Windows H.264 and optional HEVC decoders.
@@ -1664,7 +1941,7 @@ response packing, BMP and supplementary format controls,
 hundredth-step speech rate, and native-scene guards. These are synthetic
 headless boundaries, not native voice/camera/provider or GUI acceptance.
 
-The opt-in actual-app control fixture requires a private CPU dev-full configure with -DOKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE=ON. Build native_app_control_fixture explicitly and run only native_app_control_offscreen. It uses actual production Qt controls and private settings under Qt offscreen, bypassing platform/device/provider startup. The separate scripts/test_mcp_native_sdk.mjs validates authenticated stdio/IPC against that real target. These checks establish the executed CPU-native subset, not CUDA effects, physical camera/phone or complete 94-field hardware acceptance.
+The opt-in actual-app control fixture requires a private CPU dev-full configure with -DOKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE=ON. Its main installs phone adb test hooks on a private, closed port (Windows ADB interface reported absent), so a discovery a slot dispatches never queries or starts a real adb server. `ResetCameraFixture` drains a queued start, a camera stop, start-up workers and a dispatched discovery, then resets the phone-link state, the camera intent, the saved camera settings, the picker and source selection, and the capture's last requested link; camera cleanups reset before they check (a failed check must not skip the reset, and `QTRY_*` returns at once after a failure), and a failed pending check prints `CameraPendingDump`. The phone slots pass in any order (iteration 6 ran the failing pair and two whole-set orders). Build native_app_control_fixture explicitly and run only native_app_control_offscreen. It uses actual production Qt controls and private settings under Qt offscreen, bypassing platform/device/provider startup. The separate scripts/test_mcp_native_sdk.mjs validates authenticated stdio/IPC against that real target. These checks establish the executed CPU-native subset, not CUDA effects, physical camera/phone or complete 94-field hardware acceptance.
 
 ## Ultra Clear Text fixtures (development)
 

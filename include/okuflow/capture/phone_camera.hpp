@@ -2,7 +2,10 @@
 #ifdef _WIN32
 #include "okuflow/capture/media_capture.hpp"
 #include "okuflow/capture/phone_startup_budget.hpp"
+#include "okuflow/capture/phone_link_doctor.hpp"
+#include "okuflow/capture/adb_owned_server.hpp"
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <mutex>
 #include <thread>
@@ -18,6 +21,77 @@ class QJsonObject;
 namespace okuflow {
 // Public adb devices.proto fields only; unknown/non-USB/unauthorized transports are excluded.
 std::vector<CameraDescriptor> ParseAdbUsbDevices(std::span<const std::uint8_t> protobuf);
+// Every listed transport with its raw state, for the link doctor. The camera
+// list above stays restricted to USB + DEVICE; this keeps unauthorized,
+// authorizing, connecting and offline entries visible.
+struct AdbDeviceEntry {
+    std::string serial;
+    std::string model;
+    PhoneAdbState state{PhoneAdbState::Other};
+    bool usb{false};
+    std::uint64_t transportId{0};
+};
+std::vector<AdbDeviceEntry> ParseAdbDeviceEntries(std::span<const std::uint8_t> protobuf);
+// host:devices-l text fallback for older servers.
+std::vector<AdbDeviceEntry> ParseAdbDevicesLongText(std::string_view text);
+// Pure parser for the bounded read-only phone shell query (wakefulness,
+// keyguard, package presence, process presence). Unknown stays Unknown.
+// "Not installed" and "not running" need the closing sentinel line
+// (kPhoneShellFactsEnd, matched as a whole line, also by the reader).
+inline constexpr char kPhoneShellFactsEnd[] = "OKUFLOW_FACTS_END";
+PhoneShellFacts ParsePhoneShellFacts(std::string_view text);
+// SetupAPI: is an Android ADB USB interface (standard interface GUID)
+// present in Windows right now? Absent also for a phone that does not
+// publish that GUID; Unknown only when the SetupAPI query itself failed.
+PhoneAdbInterface QueryAndroidAdbInterface();
+// Short stable tag for logs and the always-on trace; never the serial itself.
+std::string PhoneSerialTag(std::string_view serial);
+// Always-on rolling phone link trace (two files of at most 256 KiB). An empty
+// path disables the file; lines still reach the debug log.
+void SetPhoneLinkTraceFile(const std::wstring& path);
+// Never writes the file on the calling thread (events arrive on the UI
+// thread): lines are queued for a private writer thread.
+void TracePhoneLink(std::string_view line);
+// Waits until every queued trace line is written (tests, shutdown).
+bool FlushPhoneLinkTrace(std::chrono::milliseconds timeout);
+// Events reset every recovery budget (doctor, launch, reconnect, server
+// start/restart cooldowns). Resume and removal also void the server identity
+// so pre-sleep transport ids and health are not trusted. Thread-safe.
+void NotePhoneLinkEvent(PhoneLinkEvent event);
+// Caller facts for one discovery cycle with the doctor engaged.
+struct PhoneLinkRequest {
+    bool phoneWanted{false};
+    bool captureAbandoned{false};
+    bool sessionStreaming{false};
+    // Automatic first start (no saved phone, no explicit webcam): the phone
+    // counts as wanted while Windows shows an ADB interface.
+    bool phoneWantedIfAttached{false};
+    // The phone of the selected or live session (also before its first
+    // frame); preferred over the recovery serial as the ladder's target so
+    // shell commands never reach a phone the user did not choose.
+    std::string targetSerial;
+    // The application's phone-intent generation when this request was made,
+    // and the live counter it advances on every source or target change
+    // (a webcam, a file, another phone, no phone). Every side effect of the
+    // ladder (ask, terminate, start beside, restart, reconnect, hand-back,
+    // wake and launch, leftover-instance cleanup) is checked against it right
+    // before it runs and after each blocking pre-check: a stale request does
+    // nothing ("dropped: the source changed"). Null: never stale.
+    std::uint64_t intentGeneration{0};
+    const std::atomic<std::uint64_t>* liveIntentGeneration{nullptr};
+    bool IntentStale() const
+    {
+        return liveIntentGeneration && liveIntentGeneration->load() != intentGeneration;
+    }
+};
+struct PhoneLinkReport {
+    PhoneLinkObservation observation;
+    PhoneLinkDecision decision;
+    // The phone the ladder is about (preferred serial, or the only USB entry).
+    std::string targetSerial;
+    // Short trace text of the executed action's outcome, empty when none ran.
+    std::string actionResult;
+};
 // Missing/invalid capabilities expose no hardware zoom, never a guessed range.
 std::pair<float, float> ResolvePhoneZoomRange(const QJsonObject& capabilities, const std::string& selectedCamera);
 
@@ -32,8 +106,9 @@ struct AdbServerEndpoint {
     // True only for the private loopback server this OkuFlow process
     // launched itself (exact owned child in a kill-on-job-close job). An
     // overridden endpoint or a pre-existing default-port listener is borrowed.
-    // Only separately proven reviewed legacy OkuFlow bundles qualify for
-    // deliberate reclamation; unknown/shared SDK servers remain untouched.
+    // An overridden endpoint is never stopped. A default-port adb.exe that is
+    // hung, or blind to a phone Windows shows and serving no other device, is
+    // stopped through its exact listener handle (owner decision 2026-11-17).
     bool ownedByThisProcess{false};
 };
 AdbServerEndpoint ParseAdbServerEndpoint(std::string_view serverSocket, std::string_view serverPort,
@@ -53,8 +128,101 @@ struct PhoneAdbTestHooks {
     std::wstring ownedServerExecutable;
     std::vector<std::wstring> ownedServerArguments;
     std::uint32_t borrowedHangConfirmationMs{5000};
+    // Windows ADB interface presence; unset reports Unknown (no blind rules).
+    std::function<PhoneAdbInterface()> adbInterface;
+    // Another OkuFlow instance; unset reports none (no real process scan)
+    // unless siblingImage names a fixture image for the real scan.
+    std::function<bool()> otherInstanceRunning;
+    // The production sibling scan, classification and leftover stop run
+    // against this private fixture image and registration tag (never this
+    // installation); the adb-child fallback uses siblingAdbImage.
+    std::wstring siblingImage;
+    std::wstring siblingTag;
+    std::wstring siblingAdbImage;
+    std::int64_t siblingExitingGraceMs{5000};
+    std::int64_t siblingWindowlessMs{20000};
+    // The leftover's termination is refused as Windows would for an
+    // elevated process, to reach the adb-child step.
+    bool refuseSiblingTermination{false};
+    // Reports a visible window of the leftover at the last check before
+    // termination (its stop then ends IdentityChanged).
+    std::function<bool(DWORD processId)> siblingVisibleWindowForTest;
+    // Reports the default-port listener's process as one OpenProcess
+    // refuses (another user, elevated). The adb.exe image rule itself has
+    // no hook: fixtures run a copy named adb.exe.
+    std::function<bool()> defaultListenerUnopenable;
+    // Runs when a host:kill or termination of the default listener starts,
+    // before its fresh listing (lets a fixture change between decision and act).
+    std::function<void()> beforeDefaultStopForTest;
+    // Runs when a hand-back has stopped the private server, before the
+    // hand-over is counted (lets a test raise an event in between).
+    std::function<void()> afterPrivateServerRetiredForTest;
+    // Runs when a StartShadowServer action begins, before its start request
+    // is set (lets a test change the default between decision and act).
+    std::function<void()> beforeShadowStartForTest;
+    // Runs when a WakeAndLaunchApp action begins, before its first shell
+    // command (lets a test change the source between decision and act).
+    std::function<void()> beforeCompanionLaunchForTest;
+    // Runs inside the ladder's hand-back after its live-session check and
+    // before the private server is stopped (a session's server request made
+    // here must wait for the hand-back).
+    std::function<void()> afterHandBackCheckForTest;
+    // Runs at a named stage of a discovery cycle, so a test can change the
+    // source inside it: in a server request (EnsureAdbServer) "locked" (the
+    // lifecycle lock was just taken, as after waiting for it) and
+    // "default-probed" (the default's version probe just returned); in the
+    // link ladder "decide" (the observation is complete, right before the
+    // doctor decides). The server request stages hold the lifecycle lock
+    // (another server request waits); "decide" holds no lock.
+    std::function<void(std::string_view stage)> linkStageForTest;
+    // Runs after the raw host:kill connect, before any byte is written.
+    std::function<void()> afterHostKillConnectForTest;
+    // Runs after a transport reconnect request's connect (offline and
+    // stalled-device paths), before its authority check and any byte.
+    std::function<void()> afterReconnectConnectForTest;
+    // Stands in for the legacy bundle reclamation of a hung default, which
+    // runs only in production (never against the machine's default port
+    // from a fixture): set, the branch is entered as in production, this
+    // runs in place of the reclamation, and the branch goes on as for a
+    // default that is not a legacy bundle.
+    std::function<void()> legacyReclaimForTest;
+    // Reports a live phone session (registered and delivering frames), for
+    // the refusal of the ask and termination executors, in addition to the
+    // real sessions (lets a test make one go live at an exact point).
+    std::function<bool()> phoneSessionLiveForTest;
+    // A silent real-session fixture can stay registered through a stop decision.
+    std::optional<std::chrono::milliseconds> sessionConnectBudgetForTest;
+    // Doctor budgets for fast fixtures; production uses PhoneLinkPolicy{}.
+    std::optional<PhoneLinkPolicy> linkPolicy;
+    // Owned-server budgets for fast fixtures (start grace, readiness,
+    // cooldown); production uses OwnedAdbServerPolicy{}. Listener ownership
+    // is always verified.
+    std::optional<OwnedAdbServerPolicy> ownedPolicy;
 };
 void SetPhoneAdbTestHooks(std::optional<PhoneAdbTestHooks> hooks);
+// Whether a phone session forbids stopping an adb server (pure). Only a LIVE
+// session does: registered, and a frame was delivered within
+// kLivePhoneSessionFrameMs. A session that is registered but silent is
+// starting or reconnecting; against a hung server it stays registered for
+// most of the time its start is retried, and it must not keep OkuFlow from
+// stopping the very server it is waiting for.
+inline constexpr std::int64_t kLivePhoneSessionFrameMs = 2000;
+constexpr bool PhoneSessionBlocksStop(bool registered, std::int64_t lastFrameMs, std::int64_t nowMs)
+{
+    return registered && lastFrameMs >= 0 && nowMs - lastFrameMs < kLivePhoneSessionFrameMs;
+}
+// Test seam (read only): a private-server start beside the default is
+// requested and not yet consumed or dropped.
+bool PhoneAdbShadowRequestedForTest();
+// Test seam (read only): a phone session is registered, and whether the
+// production rule reads it live (PhoneSessionBlocksStop over the last
+// decoded frame; the phoneSessionLiveForTest hook is not consulted).
+struct PhoneSessionStateForTest {
+    bool registered{false};
+    bool live{false};
+    std::int64_t lastFrameMs{-1};
+};
+PhoneSessionStateForTest ReadPhoneSessionStateForTest();
 // Stops only the private adb server this process launched and owns (exact
 // job-owned child). A borrowed pre-existing/overridden server is untouched.
 // Called on normal app teardown after capture stops; state is per-process
@@ -100,9 +268,17 @@ public:
         bool* listingSucceeded = nullptr,
         const std::string& recoverySerial = {},
         PhoneDiscoveryStatus* status = nullptr,
-        PhoneServerIntent serverIntent = PhoneServerIntent::BorrowOnly);
-    // Automatic starts launch the phone app at most once per serial and USB
-    // transport. A deliberate user selection may restore that one launch.
+        PhoneServerIntent serverIntent = PhoneServerIntent::BorrowOnly,
+        // Opt-in: collect a full link observation, let the doctor choose
+        // the next recovery rung and run it (bounded, cancellable).
+        const PhoneLinkRequest* link = nullptr,
+        PhoneLinkReport* report = nullptr);
+    // Starts wake the phone and launch the companion when its listener is
+    // absent, at most once per start attempt, from the link doctor's one
+    // per-event launch budget that the discovery ladder shares (at once
+    // after an event, then 3 s, 6 s, every 20 s; once per event while the
+    // app process runs with its listener closed). A deliberate user
+    // selection renews that budget.
     static void AllowAppLaunch(const std::string& serial);
     // Worker-only recovery: reset only this currently authorized USB transport
     // when adb host services respond but two full-token device shell health
@@ -113,8 +289,11 @@ public:
     // camera sessions. Returns true only when adb acknowledges a targeted
     // reconnect request and the stale transport then disappears or
     // re-registers under a new ID; discovery observes the phone afterward.
+    // `stillWanted` (optional) is asked right before the reconnect request
+    // is sent: false sends nothing (the source changed meanwhile).
     static bool RecoverStalledUsbTransport(const CameraDescriptor& descriptor,
-                                          const std::atomic<bool>* canceled = nullptr);
+                                          const std::atomic<bool>* canceled = nullptr,
+                                          const std::function<bool()>& stillWanted = {});
     bool Start(const CameraDescriptor& descriptor, IMFDXGIDeviceManager* manager,
                FrameCallback callback, CaptureErrorCallback errorCallback,
                const std::atomic<bool>* startupCanceled = nullptr);

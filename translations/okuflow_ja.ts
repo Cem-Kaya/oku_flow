@@ -3761,5 +3761,73 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Formula could not be read. The original image is unchanged.</source>
         <translation>数式を読み取れませんでした。元の画像は変更されていません。</translation>
     </message>
+    <message>
+        <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
+        <translation>スマートフォンを USB で接続し、スマートフォンで [ファイル転送] を選んで USB デバッグをオンにしてください。</translation>
+    </message>
+    <message>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>スマートフォンのロックを解除し、USB デバッグの確認で [許可] をタップしてください。確認が表示されない場合は、USB ケーブルを抜いてから挿し直してください。</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>スマートフォンの OkuFlow カメラが応答していません。スマートフォンでアプリを閉じて、もう一度開いてください。</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>スマートフォンの USB ケーブルを抜いてから挿し直してください。</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow がスマートフォンとの USB 接続を開始できません。OkuFlow を再インストールするか、ウイルス対策ソフトで許可してください。</translation>
+    </message>
+    <message>
+        <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>
+        <translation>スマートフォンのカメラを起動できませんでした。スマートフォンでほかのカメラアプリを閉じてから、OkuFlow カメラをもう一度開いてください。</translation>
+    </message>
+    <message>
+        <source>A different phone is connected. Connect the phone you chose in OkuFlow, or choose the connected phone under Settings, Camera.</source>
+        <translation>別のスマートフォンが接続されています。OkuFlow で選んだスマートフォンを接続するか、[設定]、[カメラ] で接続中のスマートフォンを選んでください。</translation>
+    </message>
+    <message>
+        <source>Unlock your phone.</source>
+        <translation>スマートフォンのロックを解除してください。</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone.</source>
+        <translation>スマートフォンで OkuFlow カメラを開いてください。</translation>
+    </message>
+    <message>
+        <source>Install OkuFlow Camera on the phone.</source>
+        <translation>スマートフォンに OkuFlow カメラをインストールしてください。</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera and tap Resume streaming.</source>
+        <translation>スマートフォンで OkuFlow カメラを開き、[ストリーミングを再開する] をタップしてください。</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming.</source>
+        <translation>スマートフォンで OkuFlow カメラを開いてください。ストリーミングが一時停止中と表示されている場合は、[ストリーミングを再開する] をタップしてください。</translation>
+    </message>
+    <message>
+        <source>Another computer or program is using the phone camera.</source>
+        <translation>別のコンピューターまたはプログラムがスマートフォンのカメラを使用しています。</translation>
+    </message>
+    <message>
+        <source>Camera access is blocked on the phone.</source>
+        <translation>スマートフォンでカメラへのアクセスがブロックされています。</translation>
+    </message>
+    <message>
+        <source>The phone is too hot. Let it cool down.</source>
+        <translation>スマートフォンが熱くなりすぎています。冷めるまでお待ちください。</translation>
+    </message>
+    <message>
+        <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
+        <translation>別の OkuFlow ウィンドウがスマートフォンを使用しています。ここで使うには、そのウィンドウを閉じてください。</translation>
+    </message>
+    <message>
+        <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
+        <translation>別のプログラムがスマートフォンの USB 接続を使用しています。そのプログラムを閉じるか、コンピューターを再起動してください。</translation>
+    </message>
 </context>
 </TS>

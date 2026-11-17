@@ -2,6 +2,103 @@
 
 ## [Unreleased]
 
+- Bind USB phone recovery to the Android tool that supplied the listing.
+  Preserve replacement servers and skip reconnects when the phone has already
+  recovered. Repeated live-session vetoes reach the existing stop limit.
+  Phone-link traces record fixed companion problem codes.
+
+- Submit Android 0.1.5 (code 6) with the phone-link recovery changes to the
+  Play closed test (Alpha). Not yet run on a device.
+- Picking the phone that is already chosen no longer cancels a phone
+  connection step that is under way. Choosing another source while OkuFlow
+  repairs the phone connection now also stops the repair inside OkuFlow's
+  Android tool. When OkuFlow's own Android tool keeps dying shortly after it
+  starts, or stays silent while another program's tool lists the phone,
+  OkuFlow uses the other tool or says that its own cannot start, instead of
+  blaming another program. A phone camera behind a PDF page or a recording is
+  no longer treated as idle, and another program's Android tool is never
+  stopped while a phone session is delivering frames. Choosing a webcam while
+  OkuFlow's own Android tool is still starting no longer counts against that
+  tool, so a later phone pick does not wrongly say that it cannot start.
+
+- The phone camera no longer stays on "Restoring USB connection…" when the
+  Android tool answers but cannot list devices (as after sleep or a cable
+  pull): OkuFlow restarts its own, or takes over another program's, and says
+  what to do when that does not help. When OkuFlow's own Android tool starts
+  but never answers (for example because security software blocks it), or
+  cannot start beside another program's, OkuFlow now says so. Choosing a
+  webcam, a file or another phone stops any phone recovery that was under way.
+  After sleep, a phone session that keeps delivering video is no longer
+  restarted while a PDF page or a recording is shown. A cable that keeps
+  dropping is named; one wake no longer restarts every attempt several times.
+  OkuFlow Camera leaves the lock screen as soon as Pause is tapped there, and
+  keeps answering "paused" if its status listener stops.
+- An Android tool server that listens on every network address, which OkuFlow
+  cannot identify, no longer keeps the phone on "Restoring USB connection…"
+  for ever: after a few attempts OkuFlow says another program is using the
+  phone.
+- Make the USB phone camera reconnect by itself after sleep, cable pulls,
+  improper shutdowns and phone sleep. OkuFlow now sees unauthorized, offline
+  and stalled phones, wakes the phone and reopens OkuFlow Camera, restarts its
+  own Android connection when it goes blind, and, as the owner decided on
+  2026-11-17, stops a hung or blind default Android tool server that holds the
+  phone (never one set through the adb environment variables or one serving
+  other devices). Retries restart quickly after every connection, wake or
+  manual pick instead of waiting up to a minute. The camera area says in one
+  sentence what to do when only the user can act (for example "Unlock your
+  phone and tap Allow on the USB debugging question"). A small rolling
+  `phone-link.log` in the Debug folder records what happened, without serial
+  numbers. OkuFlow Camera can show over the lock screen when the computer opens
+  it (never while paused) and tells the computer when streaming is paused.
+- The phone instruction stays visible and is read aloud in the status line even
+  while a laptop webcam shows the picture in the meantime. OkuFlow now also
+  says when to unplug and re-plug the cable, when OkuFlow Camera on the phone
+  stops responding, and when its own USB connection cannot start (reinstall or
+  allow it in the antivirus program). A leftover OkuFlow window that is stuck
+  while closing is ended automatically; an OkuFlow window you can see is never
+  closed. Another Android tool that keeps restarting its server is no longer
+  fought endlessly: after a few attempts OkuFlow says another program is using
+  the phone.
+- A phone that another Android tool keeps offline is now taken over after two
+  reconnects instead of reading "Restoring USB connection…" for ever, also
+  right after OkuFlow starts. OkuFlow says when the phone camera is held by
+  another phone app or cannot start, and when a different phone than the
+  chosen one is connected. A paused OkuFlow Camera on a locked phone is woken
+  once, not every 20 seconds. A screen reader now hears every change of the
+  phone instruction while no camera runs, and passing notifications no longer
+  replace it. A leftover OkuFlow instance is stopped only after it has finished
+  saving recordings and settings, and only while it plausibly holds the phone.
+- A phone that another Android tool lists as ready but that no longer answers
+  is taken over instead of being swapped back and forth. A screen reader hears
+  passing notifications (for example a recording that stopped) also while the
+  phone instruction owns the status line. A locked or paused phone is no
+  longer "started" every few seconds over its instruction; it is woken and
+  OkuFlow Camera is opened, and the camera starts once it is ready. When
+  OkuFlow Camera runs but does not answer, OkuFlow now says to open it and,
+  if it shows that streaming is paused, to tap Resume streaming. When Windows
+  cannot report the phone's USB interface, OkuFlow ends in the re-plug
+  instruction instead of "Restoring USB connection…" for ever, and never stops
+  another program's Android tool then.
+- Another Android tool whose phone starts answering again while OkuFlow takes
+  over is left running and used. A paused OkuFlow Camera that the phone keeps
+  closing is reopened at once only the first time, then every 20 seconds. An
+  Android connection set through the adb environment variables that does not
+  see the phone, or stops answering, ends in the re-plug instruction. A slow
+  Android tool that served another device no longer keeps OkuFlow saying
+  another program uses the phone once that device is gone.
+- An Android tool on the default port that answers listings but not version
+  checks is no longer met with "Restoring USB connection…" for ever: after
+  three stops that it answered in time, OkuFlow says another program is using
+  the phone's USB connection, and the sentence ends when that tool recovers or
+  closes. A request to exit that was never sent is no longer followed by
+  stopping the tool, and a phone whose shell answers with a Windows line ending
+  counts as answering.
+- Choosing a camera while a recording runs no longer pauses USB phone recovery
+  until the recording ends. An Android tool that was slow to answer and then
+  recovered is still asked to give up the phone instead of being named at once,
+  and OkuFlow no longer starts its own USB connection beside a tool on the
+  default port that no check has examined.
+
 - Clarify the public Android privacy policy: OkuFlow Camera is an accessibility-focused
   USB companion, normal viewing does not upload camera images to the developer,
   users control local files, and optional Windows AI requests follow the selected

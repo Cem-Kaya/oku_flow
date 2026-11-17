@@ -5,12 +5,41 @@
 //       launch `sleep <childReady>` through OwnedChildProcess, write
 //       <parentReady>, then return normally (exit) or sleep (hang) so the
 //       test can terminate this parent and observe job-close cleanup.
-// No real adb or window. Optional fake host mode binds only a private test port.
+// No real adb or window. Optional fake host mode binds only a private test port:
+//   -L tcp:<port> [--fixture-hang] [--fixture-exit-after-list] [--fixture-device]
+//       [--fixture-exit-on-kill] [--fixture-device-file <path>] [--fixture-fail-file <path>]
+//       [--fixture-kill-log <path>]   (one line per host:kill received)
+//       [--fixture-offline-file <path>] (while it exists, the device is listed offline)
+//       [--fixture-slow-version <ms>]  (host:version answers after <ms>; listings stay prompt)
+//       [--fixture-slow-version-file <path>] (host:version answers after 1100 ms while <path> exists)
+//       [--fixture-stalled-shell]     (the listed device's adbd never answers: a transport
+//                                      request is accepted, the service after it never is)
+//       [--fixture-stalled-shell-file <path>] (stalled like --fixture-stalled-shell while <path>
+//                                      exists; otherwise adbd answers `shell:echo <text>` with
+//                                      <text> and a newline, and fails every other service)
+//       [--fixture-shell-crlf]        (that echo ends its line with CR LF, as a shell through a PTY may)
+// Tests may run a copy of this executable named adb.exe so the production
+// image rule (adb.exe) is exercised without any hook.
+// Sibling modes (windowless; hidden windows are never shown):
+//   instance <tag> <exiting 0|1> <readyFile> [childReady]
+//       registered instance; optionally with a `sleep` child of this image
+//   instance-windows <tag> <uiStuck 0|1> <readyFile>
+//       registered instance with a hidden pumping top-level window on its
+//       main thread and a hidden top-level window on a helper thread that
+//       never pumps; the recorded UI thread is the helper (uiStuck 1) or the
+//       main thread (uiStuck 0)
+//   instance-nowindow <tag> <readyFile>
+//       registered instance whose recorded UI thread (main thread) owns no window
+//   spawn <childReady> <parentReady>
+//       start `exit-after 3000 <childReady>` outside any job, then exit
 #include "okuflow/capture/adb_owned_server.hpp"
 
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <thread>
+#include <vector>
 
 namespace {
 bool WritePid(const wchar_t* path)
@@ -29,6 +58,43 @@ bool FileExists(const wchar_t* path)
 void SleepForever()
 {
     for (;;) Sleep(50);
+}
+LRESULT CALLBACK FixtureWindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    return DefWindowProcW(window, message, wParam, lParam);
+}
+// A hidden top-level window (never shown, no taskbar entry).
+HWND CreateHiddenWindow()
+{
+    static const ATOM atom = [] {
+        WNDCLASSW type{};
+        type.lpfnWndProc = FixtureWindowProc;
+        type.hInstance = GetModuleHandleW(nullptr);
+        type.lpszClassName = L"OkuFlowSiblingFixture";
+        return RegisterClassW(&type);
+    }();
+    if (!atom) return nullptr;
+    return CreateWindowExW(WS_EX_TOOLWINDOW, L"OkuFlowSiblingFixture", L"", WS_POPUP, 0, 0, 1, 1, nullptr,
+                           nullptr, GetModuleHandleW(nullptr), nullptr);
+}
+// The named objects of OkuFlowInstanceRegistration; `uiThread` (when set)
+// is recorded like the production registration records its GUI thread.
+bool RegisterInstance(const std::wstring& tag, bool exiting, DWORD uiThread = 0)
+{
+    const auto pid = std::to_wstring(GetCurrentProcessId());
+    HANDLE registered = CreateEventW(nullptr, TRUE, FALSE, (L"Local\\OkuFlow.Instance." + tag + L"." + pid).c_str());
+    HANDLE exitEvent = CreateEventW(nullptr, TRUE, FALSE, (L"Local\\OkuFlow.Exiting." + tag + L"." + pid).c_str());
+    if (!registered || !exitEvent) return false;
+    if (exiting) SetEvent(exitEvent);
+    if (uiThread) {
+        HANDLE mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(DWORD),
+                                            (L"Local\\OkuFlow.UiThread." + tag + L"." + pid).c_str());
+        void* view = mapping ? MapViewOfFile(mapping, FILE_MAP_WRITE, 0, 0, sizeof(DWORD)) : nullptr;
+        if (!view) return false;
+        *static_cast<DWORD*>(view) = uiThread;
+        UnmapViewOfFile(view);
+    }
+    return true; // The handles stay open for the life of the process.
 }
 bool ReadSocket(SOCKET socket, char* bytes, int count)
 {
@@ -50,7 +116,20 @@ void Reply(SOCKET socket, const std::string& body)
         offset += sent;
     }
 }
-int FakeAdbServer(unsigned short port, bool hang, bool exitAfterList, bool device)
+struct FakeOptions {
+    bool hang{false}, exitAfterList{false}, device{false}, exitOnKill{false}, stalledShell{false}, shellCrlf{false};
+    std::wstring deviceFile, failFile, killLog, offlineFile, stalledShellFile, slowVersionFile;
+    unsigned slowVersionMs{0};
+};
+void AppendLine(const std::wstring& path, const char* line)
+{
+    FILE* file = nullptr;
+    if (_wfopen_s(&file, path.c_str(), L"ab") != 0 || !file) return;
+    std::fputs(line, file);
+    std::fputc('\n', file);
+    std::fclose(file);
+}
+int FakeAdbServer(unsigned short port, const FakeOptions& options)
 {
     wchar_t emulatorSetting[8]{};
     if (!GetEnvironmentVariableW(L"ADB_EMU", emulatorSetting, 8) ||
@@ -71,6 +150,7 @@ int FakeAdbServer(unsigned short port, bool hang, bool exitAfterList, bool devic
     address.sin_port = htons(port);
     if (bind(listener, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == SOCKET_ERROR ||
         listen(listener, 8) == SOCKET_ERROR) { closesocket(listener); WSACleanup(); return 9; }
+    std::vector<SOCKET> held;
     for (;;) {
         const SOCKET client = accept(listener, nullptr, nullptr);
         if (client == INVALID_SOCKET) break;
@@ -83,17 +163,65 @@ int FakeAdbServer(unsigned short port, bool hang, bool exitAfterList, bool devic
         if (count > 65535) { closesocket(client); continue; }
         std::string request(count, '\0');
         if (!ReadSocket(client, request.data(), static_cast<int>(count))) { closesocket(client); continue; }
-        if (hang) SleepForever();
+        if (options.hang) SleepForever();
+        const bool deviceListed = options.device || (!options.deviceFile.empty() && FileExists(options.deviceFile.c_str()));
+        const bool stalledShell = options.stalledShell ||
+            (!options.stalledShellFile.empty() && FileExists(options.stalledShellFile.c_str()));
+        if (stalledShell && deviceListed && request.starts_with("host:transport")) {
+            // adbd of the listed device is silent: the server accepts the
+            // transport, reads the service request and never answers it.
+            send(client, "OKAY", 4, 0);
+            char next[5]{};
+            if (ReadSocket(client, next, 4)) {
+                std::string service(std::strtoul(next, nullptr, 16), ' ');
+                if (service.size() <= 65535) ReadSocket(client, service.data(), static_cast<int>(service.size()));
+            }
+            held.push_back(client); // Kept open, never answered, until exit.
+            continue;
+        }
+        if (!options.stalledShellFile.empty() && deviceListed && request.starts_with("host:transport")) {
+            // adbd answers: `shell:echo <text>` streams <text> and a newline.
+            send(client, "OKAY", 4, 0);
+            char next[5]{};
+            std::string service;
+            if (ReadSocket(client, next, 4)) {
+                service.assign(std::strtoul(next, nullptr, 16), ' ');
+                if (service.size() > 65535 || !ReadSocket(client, service.data(), static_cast<int>(service.size())))
+                    service.clear();
+            }
+            if (service.starts_with("shell:echo ")) {
+                const std::string text = "OKAY" + service.substr(11) + (options.shellCrlf ? "\r\n" : "\n");
+                send(client, text.data(), static_cast<int>(text.size()), 0);
+            } else {
+                send(client, "FAIL000bunsupported", 19, 0);
+            }
+            closesocket(client);
+            continue;
+        }
+        if (request == "host:kill" && !options.killLog.empty()) AppendLine(options.killLog, "host:kill");
         const bool listing = request == "host:track-devices-proto-binary" || request == "host:devices-l";
-        if (request == "host:version") Reply(client, "0029");
+        const bool device = deviceListed;
+        const bool failing = !options.failFile.empty() && FileExists(options.failFile.c_str());
+        if (request == "host:version") {
+            if (options.slowVersionMs) Sleep(options.slowVersionMs);
+            else if (!options.slowVersionFile.empty() && FileExists(options.slowVersionFile.c_str())) Sleep(1100);
+            Reply(client, "0029");
+        }
+        else if (listing && failing) send(client, "FAIL0006broken", 14, 0);
         else if (listing) {
-            const char protobuf[]{10, 11, 10, 3, 'a', 'b', 'c', 16, 8, 56, 1, 80, 9};
+            char protobuf[]{10, 11, 10, 3, 'a', 'b', 'c', 16, 8, 56, 1, 80, 9};
+            if (!options.offlineFile.empty() && FileExists(options.offlineFile.c_str())) protobuf[8] = 6;
             Reply(client, device ? std::string(protobuf, sizeof(protobuf)) : std::string{});
+        } else if (request == "host:kill" && options.exitOnKill) {
+            send(client, "OKAY", 4, 0);
+            closesocket(client);
+            break;
         }
         else send(client, "FAIL000bunsupported", 19, 0);
         closesocket(client);
-        if (listing && exitAfterList) break;
+        if (listing && options.exitAfterList) break;
     }
+    for (const auto client : held) closesocket(client);
     closesocket(listener);
     WSACleanup();
     return 0;
@@ -105,22 +233,93 @@ int wmain(int count, wchar_t** arguments)
     // Private production-wiring mode understands the same bind arguments as
     // adb, but serves only harmless version/empty-list host queries.
     unsigned short port = 0;
-    bool hang = false, exitAfterList = false, device = false;
+    FakeOptions options;
     for (int i = 1; i < count; ++i) {
         const std::wstring argument = arguments[i];
         if (argument == L"-L" && i + 1 < count) {
             const std::wstring socketSpec = arguments[++i];
             if (socketSpec.starts_with(L"tcp:")) port = static_cast<unsigned short>(_wtoi(socketSpec.c_str() + 4));
-        } else if (argument == L"--fixture-hang") hang = true;
-        else if (argument == L"--fixture-exit-after-list") exitAfterList = true;
-        else if (argument == L"--fixture-device") device = true;
+        } else if (argument == L"--fixture-hang") options.hang = true;
+        else if (argument == L"--fixture-exit-after-list") options.exitAfterList = true;
+        else if (argument == L"--fixture-device") options.device = true;
+        else if (argument == L"--fixture-exit-on-kill") options.exitOnKill = true;
+        else if (argument == L"--fixture-stalled-shell") options.stalledShell = true;
+        else if (argument == L"--fixture-shell-crlf") options.shellCrlf = true;
+        else if (argument == L"--fixture-device-file" && i + 1 < count) options.deviceFile = arguments[++i];
+        else if (argument == L"--fixture-fail-file" && i + 1 < count) options.failFile = arguments[++i];
+        else if (argument == L"--fixture-kill-log" && i + 1 < count) options.killLog = arguments[++i];
+        else if (argument == L"--fixture-offline-file" && i + 1 < count) options.offlineFile = arguments[++i];
+        else if (argument == L"--fixture-stalled-shell-file" && i + 1 < count) options.stalledShellFile = arguments[++i];
+        else if (argument == L"--fixture-slow-version-file" && i + 1 < count) options.slowVersionFile = arguments[++i];
+        else if (argument == L"--fixture-exit-at-start") return 0; // Killed before it ever answers.
+        else if (argument == L"--fixture-slow-version" && i + 1 < count)
+            options.slowVersionMs = static_cast<unsigned>(_wtoi(arguments[++i]));
     }
-    if (port) return FakeAdbServer(port, hang, exitAfterList, device);
+    if (port) return FakeAdbServer(port, options);
     if (count < 3) return 2;
     const std::wstring mode = arguments[1];
     if (mode == L"sleep") {
         if (!WritePid(arguments[2])) return 3;
         SleepForever();
+    }
+    // instance <tag> <exiting 0|1> <readyFile>: a windowless registered
+    // OkuFlow-like instance (the named events of OkuFlowInstanceRegistration).
+    if (mode == L"instance" && count >= 5) {
+        if (!RegisterInstance(arguments[2], std::wstring(arguments[3]) == L"1")) return 6;
+        std::unique_ptr<okuflow::OwnedChildProcess> child;
+        if (count >= 6) {
+            wchar_t self[32768]{};
+            if (!GetModuleFileNameW(nullptr, self, 32768)) return 3;
+            child = okuflow::OwnedChildProcess::Launch({self, {L"sleep", arguments[5]}, {}, {}});
+            if (!child) return 4;
+            for (int waited = 0; waited < 100 && !FileExists(arguments[5]); ++waited) Sleep(20);
+        }
+        if (!WritePid(arguments[4])) return 3;
+        SleepForever();
+    }
+    // instance-nowindow <tag> <readyFile>: registered, its main thread
+    // recorded as the UI thread, and no window at all.
+    if (mode == L"instance-nowindow" && count >= 4) {
+        if (!RegisterInstance(arguments[2], false, GetCurrentThreadId())) return 6;
+        if (!WritePid(arguments[3])) return 3;
+        SleepForever();
+    }
+    if (mode == L"instance-windows" && count >= 5) {
+        std::atomic<HWND> stuck{nullptr};
+        std::atomic<DWORD> stuckThread{0};
+        // Created on a thread that never reads its messages.
+        std::thread([&stuck, &stuckThread] {
+            stuckThread.store(GetCurrentThreadId());
+            stuck.store(CreateHiddenWindow());
+            SleepForever();
+        }).detach();
+        for (int waited = 0; waited < 100 && !stuck.load(); ++waited) Sleep(20);
+        if (!stuck.load()) return 5;
+        const bool uiStuck = std::wstring(arguments[3]) == L"1";
+        if (!RegisterInstance(arguments[2], false, uiStuck ? stuckThread.load() : GetCurrentThreadId())) return 6;
+        HWND pumping = CreateHiddenWindow();
+        if (!pumping) return 5;
+        // First in z-order, so a scan that stops at the first window sees it.
+        SetWindowPos(pumping, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        if (!WritePid(arguments[4])) return 3;
+        MSG message{};
+        while (GetMessageW(&message, nullptr, 0, 0) > 0) DispatchMessageW(&message);
+        return 0;
+    }
+    if (mode == L"spawn" && count >= 4) {
+        wchar_t self[32768]{};
+        if (!GetModuleFileNameW(nullptr, self, 32768)) return 3;
+        std::wstring command = L"\"" + std::wstring(self) + L"\" exit-after 3000 \"" + arguments[2] + L"\"";
+        STARTUPINFOW startup{sizeof(startup)};
+        PROCESS_INFORMATION process{};
+        if (!CreateProcessW(self, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr,
+                            &startup, &process))
+            return 4;
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
+        for (int waited = 0; waited < 100 && !FileExists(arguments[2]); ++waited) Sleep(20);
+        if (!WritePid(arguments[3])) return 3;
+        return 0;
     }
     if (mode == L"exit-after" && count >= 4) {
         if (!WritePid(arguments[3])) return 3;

@@ -97,6 +97,23 @@ qt_add_resources(setup_assistant_tests "okuflow_setup_test_translations"
 add_test(NAME setup_assistant_interactions COMMAND setup_assistant_tests)
 set_tests_properties(setup_assistant_interactions PROPERTIES TIMEOUT 30 LABELS "gui"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+add_executable(phone_link_doctor_tests phone_link_doctor_tests.cpp
+    ${PROJECT_SOURCE_DIR}/src/capture/phone_link_doctor.cpp)
+target_include_directories(phone_link_doctor_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
+target_link_libraries(phone_link_doctor_tests PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME phone_link_doctor COMMAND phone_link_doctor_tests)
+set_tests_properties(phone_link_doctor PROPERTIES TIMEOUT 30
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+add_executable(phone_link_text_tests phone_link_text_tests.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/phone_link_text.cpp
+    ${PROJECT_SOURCE_DIR}/src/capture/phone_link_doctor.cpp)
+target_include_directories(phone_link_text_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
+target_link_libraries(phone_link_text_tests PRIVATE Qt6::Core Qt6::Test)
+target_compile_definitions(phone_link_text_tests PRIVATE
+    OKUFLOW_TRANSLATIONS_DIR="${PROJECT_SOURCE_DIR}/translations")
+add_test(NAME phone_link_text COMMAND phone_link_text_tests)
+set_tests_properties(phone_link_text PROPERTIES TIMEOUT 30 LABELS "headless"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 add_executable(phone_retry_policy_tests phone_retry_policy_tests.cpp)
 target_include_directories(phone_retry_policy_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
 target_link_libraries(phone_retry_policy_tests PRIVATE Qt6::Core Qt6::Test)
@@ -162,17 +179,18 @@ if (WIN32)
         ${PROJECT_SOURCE_DIR}/src/capture/adb_owned_server.cpp
         ${PROJECT_SOURCE_DIR}/src/capture/adb_legacy_recovery.cpp
         ${PROJECT_SOURCE_DIR}/src/capture/phone_camera.cpp
+        ${PROJECT_SOURCE_DIR}/src/capture/phone_link_doctor.cpp
         ${PROJECT_SOURCE_DIR}/src/capture/media_capture_facade.cpp
         ${PROJECT_SOURCE_DIR}/src/capture/media_capture.cpp
         ${PROJECT_SOURCE_DIR}/src/capture/capture_buffer.cpp)
     target_include_directories(phone_camera_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_libraries(phone_camera_tests PRIVATE
-        Qt6::Core Qt6::Network Qt6::Test iphlpapi ws2_32 version advapi32 d3d11 d3d12 dxgi mf mfplat mfreadwrite mfuuid ole32 wmcodecdspuuid)
+        Qt6::Core Qt6::Network Qt6::Test iphlpapi setupapi ws2_32 version advapi32 d3d11 d3d12 dxgi mf mfplat mfreadwrite mfuuid ole32 wmcodecdspuuid)
     target_compile_definitions(phone_camera_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE
         OKUFLOW_ADB_OWNED_CHILD_FIXTURE="$<TARGET_FILE:adb_owned_child_fixture>")
     add_dependencies(phone_camera_tests adb_owned_child_fixture)
     add_test(NAME phone_camera_contract COMMAND phone_camera_tests -v1)
-    set_tests_properties(phone_camera_contract PROPERTIES TIMEOUT 180
+    set_tests_properties(phone_camera_contract PROPERTIES TIMEOUT 720
         ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 
@@ -183,11 +201,12 @@ if (WIN32)
         ${PROJECT_SOURCE_DIR}/src/capture/media_capture_facade.cpp
         ${PROJECT_SOURCE_DIR}/src/capture/media_capture.cpp
         ${PROJECT_SOURCE_DIR}/src/capture/phone_camera.cpp
+        ${PROJECT_SOURCE_DIR}/src/capture/phone_link_doctor.cpp
         ${PROJECT_SOURCE_DIR}/src/capture/capture_buffer.cpp
     )
     target_include_directories(capture_shutdown_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_libraries(capture_shutdown_tests PRIVATE
-        Qt6::Core Qt6::Network Qt6::Test iphlpapi ws2_32 version advapi32 d3d11 d3d12 dxgi mf mfplat mfreadwrite mfuuid ole32 wmcodecdspuuid)
+        Qt6::Core Qt6::Network Qt6::Test iphlpapi setupapi ws2_32 version advapi32 d3d11 d3d12 dxgi mf mfplat mfreadwrite mfuuid ole32 wmcodecdspuuid)
     target_compile_definitions(capture_shutdown_tests PRIVATE
         NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
     add_test(NAME capture_shutdown COMMAND capture_shutdown_tests)

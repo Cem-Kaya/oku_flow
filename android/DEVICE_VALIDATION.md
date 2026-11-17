@@ -12,6 +12,14 @@ and the original Play app restored. Evidence stays in
 `%LOCALAPPDATA%\OkuFlow\publication-20261014\phone-ui` and
 `phone-code4-stream`.
 
+Code 6 / 0.1.5 adds the phone-link recovery changes and passed 108 release JVM
+tests, lint and the artifact checks. It was committed to Alpha through the CLI
+on 2026-11-17 and has not been run on any device: show-when-locked on a
+computer launch with the keyguard up, Pause withdrawing it, the `paused` answer
+(also after the app was left for a while), the foreground-service start from a
+computer launch on Android 14 to 16, and the Play-signed upgrade from code 5
+are all pending.
+
 Code 5 / 0.1.4 adds the completed wording corrections and passed 68 release
 JVM tests, lint and exact 98-key resource parity. It was committed to Alpha
 through the CLI, but has not been tested as a Play-signed upgrade. Coverage

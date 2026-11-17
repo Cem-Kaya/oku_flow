@@ -1,5 +1,23 @@
 # OkuFlow Camera closed-test readiness
 
+## Alpha CLI update (2026-11-17)
+
+Signed 0.1.5 (code 6) carries the phone-link recovery changes: the activity
+shows over the lock screen when the computer launches it and leaves the lock
+screen as soon as Pause is saved, the app answers `paused` while streaming is
+paused and binds that status listener again if it stops, and a computer launch
+clears a stuck foreground-service refusal. It passed 108 release JVM tests,
+lint and the APK/AAB artifact checks. Google validated the edit and committed
+it to Alpha through the CLI on 2026-11-17 (previous active code 5). Its AAB
+SHA-256 is
+`11c4f6a22203e065376f3db1bf59211571047f5ff88d3b81a51d880fb4e16572`.
+The exact signed APK/AAB and the generated mapping/configuration are archived
+outside the repository. Google review approval and tester availability have
+not been independently verified for code 6. **Nothing in code 6 was run on a
+device:** the lock-screen behaviour, the paused answer in a cached process and
+the Play-signed upgrade from code 5 are still to be checked on a real phone
+(see `DEVICE_VALIDATION.md`).
+
 ## Alpha CLI update (2026-10-14)
 
 Signed 0.1.4 (code 5), including the completed 25-language wording review,

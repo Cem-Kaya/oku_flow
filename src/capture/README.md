@@ -138,21 +138,35 @@ A producer lease prevents reuse or release of the converted texture until CUDA
 observes its asynchronous copy completion. Split-stop fixtures use scripted
 workers and leases; they establish neither physical-camera nor phone acceptance.
 
-Phone discovery runs on a separate app worker every five seconds. Startup and
+Phone discovery runs on a separate app worker at the link doctor's pace
+(at once after an event, then 1 s, backing off to at most 10 s; 2 s while
+waiting for the user). Startup and
 webcam reconnect list only Media Foundation devices and use the cached phone
 snapshot, so adb/socket delays never block camera enumeration on the UI thread.
 Unknown adb results retain the prior cache. Probes report capabilities, busy and
 problem without claiming the stream; active/starting phones are excluded.
-`PhoneRetryPolicy` backs off failed starts, resetting on a new transport or
-readiness transition. A working webcam is replaced only by a ready phone.
+`PhoneRetryPolicy` backs off failed starts (1, 2, 3, 5, then 10 s; 5 s while
+busy), resetting on a new transport, readiness transition or link event.
+`PhoneLinkDoctor` (`phone_link_doctor.hpp`) is the pure decision unit that
+turns one observation of the whole USB chain into a diagnosis and the next
+recovery rung; `PhoneCameraTransport::Enumerate(..., link, report)` collects the
+observation and runs that rung. A working webcam is replaced only by a ready phone.
 
-The raw host connection honors local TCP adb endpoint overrides. Unknown/SDK
-borrowed servers remain untouched. Without an override/listener, a hidden bundled adb
+Sibling OkuFlow instances are observed through `ObserveOkuFlowSiblings`;
+proven leftovers of this installation are stopped by
+`StopLeftoverOkuFlowInstance` only while they plausibly hold the phone
+(android/PROTOCOL.md, "Leftover OkuFlow instance"). Camera starts and the
+ladder share one per-event companion launch budget
+(`PhoneLinkDoctor::ReserveLaunch`).
+
+The raw host connection honors local TCP adb endpoint overrides; those are
+never stopped. A hung or blind default-port adb is stopped under the owner's
+2026-11-17 rule through `TryStopDefaultAdbServer` (exact listener handle). Without an override/listener, a hidden bundled adb
 server is launched directly on a private ephemeral loopback port. Its exact
 process belongs to a non-inherited Windows kill-on-close job, so normal exit
 and owner crash both stop it. Two consecutive unresponsive host-version probes
 permit restarting only that child while no phone session is live or starting;
-failed launches and crashes retain the 30-second cooldown. `PhoneAdbTestHooks` keeps contract tests off the
+failed launches and crashes wait 5 s, doubling to 30 s until the next event. `PhoneAdbTestHooks` keeps contract tests off the
 real server. The release bundles source-built adb and its complete dependency
 runtime with notices, source and relinking inputs. See
 [adb_distribution.md](../../docs/adb_distribution.md) for the pinned recipe.

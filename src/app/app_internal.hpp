@@ -113,6 +113,10 @@ struct CameraIngress final {
     bool wakeQueued{};
     std::uint64_t received{};
     std::uint64_t dropped{};
+    // Every frame the capture delivered to this ingress, never reset: the
+    // resume check measures delivery, not presentation (a media view, a
+    // minimized or covered window presents no camera frame).
+    std::uint64_t delivered{};
     std::uint64_t profileReceived{};
     std::uint64_t profileDropped{};
     ULONGLONG firstArrivalMs{};

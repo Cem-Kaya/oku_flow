@@ -3761,5 +3761,73 @@ Välj Anslut ChatGPT på fliken Assistent i avancerat läge för att logga in.</
         <source>Formula could not be read. The original image is unchanged.</source>
         <translation>Formeln kunde inte läsas. Originalbilden är oförändrad.</translation>
     </message>
+    <message>
+        <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
+        <translation>Anslut telefonen med USB, välj sedan Filöverföring på telefonen och aktivera USB-felsökning.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>Lås upp telefonen och tryck på Tillåt i frågan om USB-felsökning. Om ingen fråga visas drar du ur USB-kabeln och ansluter den igen.</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>OkuFlow Kamera svarar inte på telefonen. Stäng appen på telefonen och öppna den igen.</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>Dra ur telefonens USB-kabel och anslut den igen.</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow kan inte starta USB-anslutningen till telefonen. Installera om OkuFlow eller tillåt det i ditt antivirusprogram.</translation>
+    </message>
+    <message>
+        <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>
+        <translation>Telefonens kamera kunde inte starta. Stäng andra kameraappar på telefonen och öppna sedan OkuFlow Kamera igen.</translation>
+    </message>
+    <message>
+        <source>A different phone is connected. Connect the phone you chose in OkuFlow, or choose the connected phone under Settings, Camera.</source>
+        <translation>En annan telefon är ansluten. Anslut telefonen du valde i OkuFlow, eller välj den anslutna telefonen under Inställningar, Kamera.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone.</source>
+        <translation>Lås upp telefonen.</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone.</source>
+        <translation>Öppna OkuFlow Kamera på telefonen.</translation>
+    </message>
+    <message>
+        <source>Install OkuFlow Camera on the phone.</source>
+        <translation>Installera OkuFlow Kamera på telefonen.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera and tap Resume streaming.</source>
+        <translation>Öppna OkuFlow Kamera på telefonen och tryck på Återuppta streaming.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming.</source>
+        <translation>Öppna OkuFlow Kamera på telefonen. Om den visar att streamingen är pausad trycker du på Återuppta streaming.</translation>
+    </message>
+    <message>
+        <source>Another computer or program is using the phone camera.</source>
+        <translation>En annan dator eller ett annat program använder telefonens kamera.</translation>
+    </message>
+    <message>
+        <source>Camera access is blocked on the phone.</source>
+        <translation>Kameraåtkomst är blockerad på telefonen.</translation>
+    </message>
+    <message>
+        <source>The phone is too hot. Let it cool down.</source>
+        <translation>Telefonen är för varm. Låt den svalna.</translation>
+    </message>
+    <message>
+        <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
+        <translation>Ett annat OkuFlow-fönster använder telefonen. Stäng det för att använda telefonen här.</translation>
+    </message>
+    <message>
+        <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
+        <translation>Ett annat program använder telefonens USB-anslutning. Stäng det eller starta om datorn.</translation>
+    </message>
 </context>
 </TS>

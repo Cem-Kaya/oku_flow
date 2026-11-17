@@ -294,6 +294,8 @@ class CameraStreamService : Service() {
 
         fun onActivityResumed() = visibleStart.onResumed()
         fun onActivityPaused() = visibleStart.onPaused()
+        /** A launch by the computer is a new attempt: an earlier refusal does not stand. */
+        fun onHostLaunch() = visibleStart.onHostLaunch()
 
         fun startVisible(context: Context) {
             if (!visibleStart.canStart || !StreamingIntentStore.get(context).canStart(true)) return

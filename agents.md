@@ -280,7 +280,8 @@ aligned with the project goals.
   real camera or adb server. Preserve saved physical-camera selection when
   adding phone entries or changing discovery.
 - Follow `android/PROTOCOL.md`; never replace/kill a foreign adb server to test
-  the companion. Query structured USB transport type and use its transport ID;
+  the companion (the product's 2026-11-17 default-server stop rule is not a
+  testing permission). Query structured USB transport type and use its transport ID;
   unknown/Wi-Fi transports must not become cable-camera sources. The probe's
   recordings belong in local app data, not release bundles or the synced tree.
 - Report local fixtures separately from real-phone quality, disconnect and
@@ -478,12 +479,14 @@ aligned with the project goals.
 ## Owned adb lifecycle (2026-10-13)
 - A server started by OkuFlow must run on a private loopback port as an exact
   child assigned suspended to a non-inherited kill-on-close Windows job.
-  Normal shutdown and process crash clean up only that child. Existing default
-  listeners and endpoint overrides remain borrowed, except for the narrowly
-  reviewed legacy adoption contract below; never stop unknown/SDK servers.
-- Automatic owned-server restart requires confirmed host-version failure, no
-  live/starting phone session, cancellation checks and a 30-second cooldown
-  across failed launches and child exits. Do not persist PIDs as ownership proof.
+  Normal shutdown and process crash clean up only that child. Endpoint
+  overrides always remain borrowed. A default-port adb that is hung, or blind
+  to a phone Windows shows and serving no other device, is stopped only under
+  the owner's 2026-11-17 rule (see "Phone reconnect ladder" below).
+- Automatic owned-server restart requires confirmed host-version failure (or a
+  doctor blind restart), no live/starting phone session, cancellation checks
+  and a 5 s cooldown doubling to 30 s that link events reset. Do not persist
+  PIDs as ownership proof.
 - Count overlapping phone occupancy reservations rather than erasing a serial
   still used by another session. Repair an idle server before a new session
   registers itself. Shutdown must prevent any later owned bootstrap.
@@ -493,6 +496,204 @@ aligned with the project goals.
   preserve foreign server ownership while testing automatic recovery paths.
 - Keep lifecycle validation desktop-free with `adb_owned_child_fixture`, private
   ports and scripted probes; missing fixture registration must fail the gate.
+
+## Phone reconnect ladder (2026-11-17)
+- Bind recovery evidence to its listener before sending the listing. Carry
+  that identity through the stop checks, and pin reconnect writes to their
+  observed endpoint. A live veto counts even if the session ends before the
+  result is handled. Check reservation give-backs by retrying without an
+  event, and test cleared timestamps directly so expiry cannot mask a failure.
+  Keep companion-provided text out of traces with fixed protocol tokens.
+- Iteration 9 lessons. An authority check must reach the shared helpers a
+  guarded call reaches (the server request, the owned manager, the raw
+  `host:kill` right before its first byte, the legacy reclamation), not only
+  the outer executor; a test that revokes before the outer check proves
+  nothing about the inner ones, so revoke inside them (stage hooks). A request
+  that lost its authority must not reach the decision unit at all: deciding
+  reserves budgets the next, valid cycle needs. Advance an intent generation
+  only when the intent changes, computed after the change. Evidence belongs to
+  the thing it was recorded for: when a manager is dropped, keep its counts
+  of what was observed (a death, a readiness wait that ran out), never a
+  failure inferred from age alone, and nothing when the user's choice of
+  another source dropped it; when a listener changes, drop its
+  listener-specific evidence and compare the identity wherever a
+  confirmation is read. A rung whose own server is the
+  broken part must look at the alternative that works (the default that lists
+  the phone). A safety refusal (a live session) belongs in the executor
+  too, not only in the decision that relies on a measurement; but it must
+  be as narrow as what it protects. Only a session that delivers frames
+  forbids a stop: a session that is merely registered is starting or
+  reconnecting, and against a hung server it is registered for most of the
+  time a manual pick or a reconnect retries, so refusing for it kept OkuFlow
+  from stopping the very server that session was waiting for.
+- Iteration 8 lessons. A server can answer `host:version` while every
+  listing fails (upstream adb answers it without the transport lock): any
+  listing failure after a ready server is "does not answer", never
+  "starting", and a version answer must not clear a listing hang. Every
+  counter that leads to a sentence must also count the quiet failure modes
+  (an adb child alive and silent, one that dies before answering, a private
+  server that cannot start beside an answering default) and be reset only by
+  the thing it names answering. A discovery cycle's authority ends when the
+  user changes the source: check its intent generation right before every
+  side effect and after every blocking pre-check, also inside the stop and
+  the companion launch. Measure a live session by frames the capture
+  delivered, never by frames presented (a media view, a minimized or covered
+  window presents nothing). Events need storm limits: coalesce one wake's
+  resume signals, and name a cable that keeps dropping, but never over a
+  phone the server reaches at that moment (its own sentence is the one the
+  user needs, and a user who re-plugs a few times must not be sent back to
+  the cable). A sentence that waits for the user still needs something that
+  tries again: the doctor's start beside an answering default is retried at
+  the ceiling while "adb cannot start" stands, because no other code starts
+  that server. Listener lookups use
+  the any-address row when no loopback row exists, under the same identity
+  proof. Never bind a test listener to every address (a firewall prompt on
+  the owner's desktop): the listener-row seam rewrites rows instead.
+- The owner decided on 2026-11-17 that a hanging default-port adb server is
+  killed, not worked around. Stop it only through `TryStopDefaultAdbServer`:
+  exact loopback listener handle, decision-time PID + creation time, image
+  `adb.exe`, not this process, `host:kill` first where it can answer. Never by
+  name, never a tree, never an adb endpoint environment variable, never a
+  server that lists another device in state DEVICE. Tests run a copy of the
+  owned-child fixture named `adb.exe` on private ports; there is no image-name
+  hook, so the production `adb.exe` rule is what the tests exercise.
+- Every stop outcome needs an end state: refused, unopenable, not `adb.exe`,
+  or failed twice is the other-program sentence, cleared only when the
+  listener is gone or changes or the phone is listed. `host:kill` goes out only
+  after a successful fresh listing without the phone (ready, unauthorized or
+  authorizing) or another device and the identity and image checks.
+  Termination and `host:kill` need the Windows ADB interface, checked again
+  when the stop runs. Before any byte of a termination for a hang that only
+  version probes confirmed, one short listing attempt is made: if it is
+  answered (another device, the phone, just an answer, or an adb FAIL reply)
+  nothing is stopped and the hang must be confirmed again; termination goes
+  on only when that listing gets no answer. A listing there that shows
+  another device is remembered for that listener: the other-program
+  sentence, re-checked by listing that listener again at the user-wait
+  cadence while it stands (a vanished emulator or TCP device raises no
+  event). The transport's hand-back and every pre-check match the wanted
+  phone, not any phone. A leftover stop that ended IdentityChanged is tried
+  again on a later observation. Reconnects to another program's server and
+  the owned offline ladder have separate budgets. Two programs never fight without an end state: per-episode caps
+  on restarts, `host:kill`, terminations and private-server starts beside the
+  default plus hand-backs end in a sentence. Every start beside the default
+  counts (also the transport's own beside a hung default); at the cap a
+  hand-back to a default that lists the phone is still made, so the count
+  never ends on the blind side. Only what happened is counted: a start that
+  is throttled or has no executable is not, a hand-back counts once the
+  private server is retired (a live session can defer it), and a
+  termination aborted because the default answered its listing does not
+  spend the termination cap. A `host:kill` request that was never sent
+  (the pre-ask checks kept the server, or it was not delivered) is not
+  remembered as sent, so no termination follows it, and it does not use up
+  an ask; an ask that finds the default already gone is given back the
+  same way and, the first time in an episode, is not an aborted stop (nothing
+  was kept); every further one in the same episode counts, because a default
+  that is "gone" at each ask and answers again is a listener the lookup cannot
+  identify (an adb bound to every address), and an uncounted give-back would
+  ask it for ever with nothing shown (council round 7). Aborted terminations and unsent asks have their own per-episode
+  count (`abortedStopCap`, 3), one per rung (the hung branch's aborted
+  terminations; the takeover's unsent asks and aborted terminations), so
+  the end of one rung never ends the other: at it the other-program
+  sentence stands (probed at the user-wait cadence; a server that recovers
+  or goes away ends it), so a default that is slow only in its version
+  probes is never "Restoring" for ever, and one that answers them again but
+  stays blind is still asked to exit beside OkuFlow's server. Neither hand-back path arms the
+  30 s start throttle, and a dead private server that yields to a
+  responsive default clears the same shadow state they clear. A start the
+  doctor requested stays requested until a start beside the default passes
+  the executable and throttle checks; an event drops it, and so do a start
+  that is not beside a default any more (the default went away before it
+  ran) and releasing USB for a webcam, so a request never starts a private
+  server beside a default no decision examined. Hand-overs are counted only
+  in the episode they started in.
+- Never shorten the 5 s hang confirmation after an event; events restart it.
+  Confirm a hang from the doctor's own probe too (the borrowed branch of
+  `EnsureAdbServer` no longer runs once a private server exists).
+- `NotePhoneLinkEvent` runs on the UI thread: no lock a worker can hold
+  through a launch, no file I/O (the trace has its own writer thread).
+- Keep `phone_link_doctor` pure (no Qt, Windows or clock). Budgets reset on
+  events, not only time; a new rung needs a doctor row, a fake-adb row and a
+  trace line. Do not reintroduce "once per transport" launch budgets or
+  minute-long holds; the owner's complaint was stacked 30 s / 60 s waits.
+  Camera starts take launches from the doctor's per-event budget
+  (`ReserveLaunch`), never from a timer of their own. A listener refusal
+  within `launchSettleMs` of OkuFlow's own launch holds nothing, and a hold
+  ends when the app process is gone: relaunched at once the first time in an
+  episode (spent only by a decision that actually launches), later at `launchPeriodicMs` after the last launch (Pause survives
+  a kill, so an app a battery manager keeps killing is not pulled forward
+  every time).
+- Every stuck state ends somewhere, also on a server OkuFlow does not own: a
+  phone kept offline/connecting/stalled by a borrowed default is taken over
+  after two reconnects; the user's endpoint gets the re-plug sentence, also
+  when it does not list a phone Windows shows (after the blind grace) or
+  stays unresponsive (`userEndpointUnresponsiveMs`). Only a
+  usable listing (ready, unauthorized, authorizing) hands USB back; "ready"
+  for a phone whose adbd timed out on that same default listener in this
+  episode is not usable (it swapped back and forth before), also in the
+  `host:kill` and termination pre-checks. That memory is updated only while
+  OkuFlow borrows the default, so right before `host:kill` or a termination
+  that it alone permits, the phone's shell is asked once more through that
+  listener (`StallEndedOnDefault`): an answer (any reply within the 2 s
+  budget, CRLF included; only a timeout or a failed socket is silence)
+  clears it, nothing is stopped
+  and the next cycle hands back. Windows "Unknown" for the ADB
+  interface means only that the SetupAPI query failed (a phone without the
+  standard ADB interface GUID reads Absent). After 30 s blind under Unknown
+  OkuFlow may start or restart its own server (also beside a blind
+  default); a server OkuFlow did not start is never asked to exit or
+  stopped under Unknown, and such a takeover or a hung default ends in the
+  re-plug sentence instead of "Restoring" for ever.
+- Leftover OkuFlow instances (replaces "a windowless sibling is reported, not
+  terminated", which left the owner's original complaint in place): only real
+  instances register named events (`OkuFlowInstanceRegistration`), so an
+  offscreen or test instance is never taken for a leftover. The exit signal is
+  raised after the critical teardown (recording, image writes, capture stop,
+  settings, owned adb), never at `aboutToQuit`. A registered sibling of the
+  same image, user and session whose exit signal has been set for 5 s, or that
+  shows no window on two observations 20 s apart and whose recorded UI
+  thread's windows (the thread of its main window, recorded at registration;
+  every top-level window without that record) do not answer a window message
+  (a recorded UI thread with no window at all stays pending),
+  is terminated once through a held
+  handle (PID, creation time, image path, still no visible window), and only
+  while the phone is unlisted, the interface present and the blind grace over;
+  if refused, only its proven bundled adb child is stopped while the instance
+  is held open; an instance that cannot be opened stops nothing; else the
+  sentence. A sibling with a visible window is never terminated and is named
+  only after the blind grace. An unregistered windowless sibling is traced and
+  never blocks the ladder. Tests drive the real scan through Enumerate with a
+  fixture image and tag (`PhoneAdbTestHooks::siblingImage`), never this
+  installation.
+- New placeholder sentences need all 24 catalogs and per-entry small-agent
+  review; the eleven 2026-11-17 phone sentences, the four of iteration 2,
+  the two of iteration 3 (companion camera failure, a different phone
+  connected) and the one of iteration 4 (open OkuFlow Camera and, if it shows
+  that streaming is paused, tap Resume streaming) were written without that
+  review (the implementer ran without sub-agents); the coordinating agent ran
+  it afterwards over all 408 targets and applied 15 vetted corrections (see
+  `docs/localization.md`). A flag is checked against the catalog and the
+  companion's strings before it is applied: 12 of 27 were wrong or
+  unverifiable.
+- While the phone is the wanted camera, its sentence owns the status line,
+  also over a fallback webcam, over the generic reconnect text and over a
+  passing notification (which goes to the tooltip and is announced once
+  through `AnnounceLiveText`), and the status line speaks the instruction
+  itself, never only a title. Automatic discovery starts only a phone whose
+  companion answered ready; the ladder wakes and launches the others. Every discovery result refreshes the status line (no
+  frames refresh it while no camera runs); native tests deliver verdicts
+  through `PollPhoneCameraDiscovery`, not by calling the label update.
+- Native fixture slots must not leak camera or phone-link state into the
+  next slot: `ResetCameraFixture` drains work in flight before it resets, and
+  the fixture's adb hooks keep any dispatched discovery off a real adb.
+  Every test target that links `phone_camera.cpp` installs closed-port adb
+  hooks before its first test and restores them, not "no hooks", when a
+  test's own hooks end (`tests/phone_adb_test_guard.hpp`).
+- Discovery is held back only while a camera start or the stop a queued
+  start waits behind runs; a start that waits for a recording to end does
+  not stop the link ladder for the length of the recording.
+- Nothing here was observed on a real failing laptop; report fixture evidence
+  separately from real sleep/cable/phone acceptance.
 
 ## Automatic legacy USB recovery (2026-10-14)
 - Legacy adb reclamation is deliberate adoption of the reviewed OkuFlow bundle,

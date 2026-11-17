@@ -1,5 +1,57 @@
 # Application languages
 
+The seventeen phone reconnect sentences (eleven of the first iteration, four
+of iteration 2 including the replaced Allow sentence, two of iteration 3 and
+one of iteration 4) received the per-entry read-only review on 2026-11-17: all
+408 targets in 24 catalogs, none unread, by Claude Haiku 5.5 (ar, bn, cs, de,
+es, fa, fr, he, hi, id, it, ja) and Grok 4.7 Fast (ko, nl, pl, pt_BR, ru, sv,
+th, tr, uk, ur, vi, zh_Hans). 381 were accepted and 27 flagged. The
+coordinating agent checked each flag against this catalog and the companion's
+strings and applied 15: Settings and Camera as the catalog names them (bn, fa,
+ur, vi), USB debugging as the companion's Thai strings name it and a missing
+object (th), the typographic apostrophe (uk), word order and register
+(zh_Hans), the subject of "let it cool down" (id), and the u/uw address (nl).
+Twelve were not applied: the Spanish section name keeps its capital; Swedish
+does not require the comma that was asked for; Brazilian Portuguese keeps the
+masculine article for the app name, as the companion's own text has it; and
+Turkish and Vietnamese keep the companion's wording for USB debugging
+("USB hata ayıklama", "gỡ lỗi USB"), although the reviewer reports that
+Android itself says "USB hata ayıklaması" and "Gỡ lỗi qua USB": that claim was
+not checked on a device and stays open for both the companion and these
+sentences. The notes below that say a review is still needed predate this
+paragraph. Model review is not native-speaker or rendered-UI acceptance.
+
+Phone reconnect iteration 4 adds one Windows source key (951 total): "On the
+phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume
+streaming." It is shown when the companion's process runs but its listener is
+closed, and it reuses each catalog's existing names for OkuFlow Camera and
+Resume streaming. Structural parity passed in all 24 catalogs; the 24 targets
+still need the per-entry review.
+
+Phone reconnect iteration 3 adds two Windows source keys (950 total): "The
+phone camera could not start. Close other camera apps on the phone, then open
+OkuFlow Camera again." and "A different phone is connected. Connect the phone
+you chose in OkuFlow, or choose the connected phone under Settings, Camera."
+They reuse each catalog's existing names for OkuFlow Camera and for Settings,
+Camera. Structural parity passed in all 24 catalogs; the 48 targets still need
+the per-entry review.
+
+Phone reconnect iteration 2 adds three Windows source keys and replaces one
+(948 total): "Unplug the phone's USB cable and plug it back in.", "OkuFlow
+Camera is not responding on the phone. Close it on the phone and open it
+again.", "OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or
+allow it in your antivirus program.", and the Allow sentence now ends "If no
+question appears, unplug the USB cable and plug it back in." Structural parity
+passed in all 24 catalogs; the 96 targets still need the per-entry review.
+
+The phone reconnect work adds eleven Windows source keys (945 total): one plain
+sentence per phone link state for the camera placeholder. Each uses the
+companion's own localized app name and button labels (for example the Resume
+streaming and Allow labels) so the sentence matches the phone. Structural
+parity passed in all 24 catalogs. These 264 targets were written by the
+implementing agent without the per-entry small-agent review that agents.md
+requires; that review is still outstanding. Android strings are unchanged.
+
 The development model setup flow adds seven Windows source keys (922 total).
 All 168 targets received per-entry read-only Luna review: 163 OK, five flagged
 with replacements applied, zero unread. Structural parity passed in all 24

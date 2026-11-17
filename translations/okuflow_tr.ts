@@ -3761,5 +3761,73 @@ Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı 
         <source>Formula could not be read. The original image is unchanged.</source>
         <translation>Formül okunamadı. Orijinal görüntü değiştirilmedi.</translation>
     </message>
+    <message>
+        <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
+        <translation>Telefonu USB ile bağlayın, ardından telefonda Dosya aktarımı seçeneğini seçin ve USB hata ayıklamasını açın.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>Telefonunuzun kilidini açın ve USB hata ayıklama sorusunda İzin ver'e dokunun. Soru görünmezse USB kablosunu çıkarıp yeniden takın.</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>OkuFlow Kamera telefonda yanıt vermiyor. Uygulamayı telefonda kapatıp yeniden açın.</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>Telefonun USB kablosunu çıkarıp yeniden takın.</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow, telefonla USB bağlantısını başlatamıyor. OkuFlow'u yeniden yükleyin veya virüsten koruma programınızda ona izin verin.</translation>
+    </message>
+    <message>
+        <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>
+        <translation>Telefonun kamerası başlatılamadı. Telefondaki diğer kamera uygulamalarını kapatın, ardından OkuFlow Kamera'yı yeniden açın.</translation>
+    </message>
+    <message>
+        <source>A different phone is connected. Connect the phone you chose in OkuFlow, or choose the connected phone under Settings, Camera.</source>
+        <translation>Başka bir telefon bağlı. OkuFlow'da seçtiğiniz telefonu bağlayın veya bağlı telefonu Ayarlar, Kamera bölümünden seçin.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone.</source>
+        <translation>Telefonunuzun kilidini açın.</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone.</source>
+        <translation>Telefonda OkuFlow Kamera uygulamasını açın.</translation>
+    </message>
+    <message>
+        <source>Install OkuFlow Camera on the phone.</source>
+        <translation>Telefona OkuFlow Kamera uygulamasını yükleyin.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera and tap Resume streaming.</source>
+        <translation>Telefonda OkuFlow Kamera uygulamasını açın ve Aktarımı sürdür'e dokunun.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming.</source>
+        <translation>Telefonda OkuFlow Kamera uygulamasını açın. Aktarımın duraklatıldığını gösteriyorsa Aktarımı sürdür'e dokunun.</translation>
+    </message>
+    <message>
+        <source>Another computer or program is using the phone camera.</source>
+        <translation>Telefon kamerasını başka bir bilgisayar veya program kullanıyor.</translation>
+    </message>
+    <message>
+        <source>Camera access is blocked on the phone.</source>
+        <translation>Telefonda kamera erişimi engellenmiş.</translation>
+    </message>
+    <message>
+        <source>The phone is too hot. Let it cool down.</source>
+        <translation>Telefon çok ısındı. Soğumasını bekleyin.</translation>
+    </message>
+    <message>
+        <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
+        <translation>Telefonu başka bir OkuFlow penceresi kullanıyor. Telefonu burada kullanmak için o pencereyi kapatın.</translation>
+    </message>
+    <message>
+        <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
+        <translation>Telefonun USB bağlantısını başka bir program kullanıyor. O programı kapatın veya bilgisayarı yeniden başlatın.</translation>
+    </message>
 </context>
 </TS>

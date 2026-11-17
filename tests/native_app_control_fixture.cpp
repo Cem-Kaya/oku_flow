@@ -90,6 +90,13 @@ struct RecordingManagerTestAccess {
 }
 #endif
 
+namespace okuflow {
+// The capture's last requested physical link, put back between slots.
+struct CaptureReadbackTestAccess {
+    static void ForgetLastSymbolicLink(MediaCapture& capture) {capture.lastSymbolicLink_.clear();}
+};
+} // namespace okuflow
+
 namespace okuflow::agent {
 // This harness intentionally bypasses platform/device/provider bootstrap.
 // All controls and transitions below are the real production implementations.
@@ -125,6 +132,10 @@ public:
         app.mainWindow_=std::make_unique<MainWindow>();
         app.uiState_=std::make_unique<UIStateManager>(*app.mainWindow_,app);
         QObject::connect(app.mainWindow_.get(),&MainWindow::phoneUsbArrived,&app,&OkuFlowApp::OnPhoneUsbArrival);
+        QObject::connect(app.mainWindow_.get(),&MainWindow::phoneUsbRemoved,&app,&OkuFlowApp::OnPhoneUsbRemoval);
+        QObject::connect(app.mainWindow_.get(),&MainWindow::systemSuspending,&app,&OkuFlowApp::OnSystemSuspend);
+        QObject::connect(app.mainWindow_.get(),&MainWindow::systemResumed,&app,&OkuFlowApp::OnSystemResume);
+        QObject::connect(app.mainWindow_.get(),&MainWindow::windowActivationChanged,&app,&OkuFlowApp::OnWindowActivationChanged);
         app.pipelineOrchestrator_=std::make_unique<PipelineOrchestrator>(app,PipelineOrchestrator::Callbacks{});
         app.interactionController_=std::make_unique<InteractionController>(app);
         app.assistiveManager_=std::make_unique<AssistiveFeatureManager>(*app.uiState_->renderWidget_,app,
@@ -376,7 +387,37 @@ public:
     static bool ReconnectDue(OkuFlowApp& app) {return app.pipelineOrchestrator_->CameraReconnectDue(QDateTime::currentMSecsSinceEpoch());}
     static void LoseActiveReconnect(OkuFlowApp& app) {app.BeginCameraReconnect();}
     static bool CameraActive(OkuFlowApp& app) {return app.cameraActive_;}
+    static bool PhoneCameraRunning(OkuFlowApp& app) {
+        return app.cameraActive_ && app.selectedCameraIndex_>=0 &&
+            static_cast<size_t>(app.selectedCameraIndex_)<app.cameras_.size() &&
+            !app.cameras_[static_cast<size_t>(app.selectedCameraIndex_)].phoneSerial.empty();
+    }
     static void DriveReconnect(OkuFlowApp& app) {app.DriveCameraReconnect();}
+    // The running camera's capture delivers frames, as its capture callback
+    // does (this fixture presents none: like a media view, or a minimized
+    // or covered window, nothing reaches the presented-frame counter).
+    static bool DeliverCameraFrames(OkuFlowApp& app,int count) {
+        if(!app.cameraIngress_)return false;
+        std::scoped_lock lock(app.cameraIngress_->mutex);
+        app.cameraIngress_->delivered+=static_cast<std::uint64_t>(count);
+        return true;
+    }
+    static std::uint64_t PresentedCameraFrames(const OkuFlowApp& app) {return app.cameraFramesPresented_;}
+    static std::uint64_t PhoneIntentGeneration(const OkuFlowApp& app) {return app.phoneIntentGeneration_.load();}
+    static void RefreshPhoneIntent(OkuFlowApp& app) {app.RefreshPhoneIntentGeneration();}
+    // The report of the discovery cycle dispatched last (filled by its worker).
+    static std::shared_ptr<PhoneLinkReport> PendingLinkReport(const OkuFlowApp& app) {return app.phoneLinkPending_;}
+    // The fixture's adb hooks (a closed private port, no ADB interface) plus
+    // a stage hook of the discovery cycle; empty restores the base hooks.
+    static PhoneAdbTestHooks& BaseAdbHooks() {static PhoneAdbTestHooks hooks; return hooks;}
+    static void SetLinkStageHook(std::function<void(std::string_view)> stage) {
+        auto hooks=BaseAdbHooks();
+        hooks.linkStageForTest=std::move(stage);
+        SetPhoneAdbTestHooks(hooks);
+    }
+    static void PickPhoneAt(OkuFlowApp& app,int index) {
+        app.mainWindow_->setVideoSourceSelected(false,index); app.OnCameraSelectionChanged(index);
+    }
     static void ExpireReconnect(OkuFlowApp& app) {
         app.pipelineOrchestrator_->CancelCameraReconnect();
         app.pipelineOrchestrator_->BeginCameraReconnect(QDateTime::currentMSecsSinceEpoch()-30001);
@@ -387,15 +428,80 @@ public:
         app.RecordStartupFirstPresent();
     }
     static bool ReconnectPending(OkuFlowApp& app) {return app.pipelineOrchestrator_->IsCameraReconnectPending();}
+    static void CancelReconnect(OkuFlowApp& app) {app.pipelineOrchestrator_->CancelCameraReconnect();}
     static int ReconnectAttempts(OkuFlowApp& app) {return app.pipelineOrchestrator_->CameraReconnectAttempt();}
     static bool CameraPending(OkuFlowApp& app) {
-        return app.cameraStartupPending_ || app.cameraStopPending_ || app.startupWorkers_->active.load()!=0;
+        return app.cameraStartupPending_ || app.cameraStopPending_ || app.pendingCameraStart_.has_value() ||
+            app.startupWorkers_->active.load()!=0;
     }
+    // What keeps CameraPending true (printed when a pending check fails).
+    static QByteArray CameraPendingDump(OkuFlowApp& app) {
+        const auto flag=[](bool value){return value?"1":"0";};
+        std::string text="cameraStartupPending="+std::string(flag(app.cameraStartupPending_))+
+            " cameraStopPending="+flag(app.cameraStopPending_)+
+            " startupWorkersActive="+std::to_string(app.startupWorkers_?app.startupWorkers_->active.load():0)+
+            " pendingCameraStart="+flag(app.pendingCameraStart_.has_value())+
+            " cameraActive="+flag(app.cameraActive_)+
+            " phoneDiscoveryValid="+flag(app.phoneDiscovery_.valid())+
+            " phoneLinkPending="+flag(app.phoneLinkPending_!=nullptr)+
+            " selected="+std::to_string(app.selectedCameraIndex_)+
+            " cameras="+std::to_string(app.cameras_.size());
+        return QByteArray::fromStdString(text);
+    }
+    static bool PhoneDiscoveryInFlight(const OkuFlowApp& app) {return app.phoneDiscovery_.valid();}
+    static PhoneDiscoveryStatus LastPhoneDiscoveryStatus(const OkuFlowApp& app) {return app.phoneDiscoveryStatus_;}
+    // A start with manual origin while a recording session exists, as the
+    // format picker makes it (it does not stop the recording): the start is
+    // only queued (pendingCameraStart_) until the recording ends.
+    static bool ManualStartWhileRecording(OkuFlowApp& app,size_t index) {
+        return app.StartCameraCapture(index,true,false,false,agent::CameraSourceOrigin::Manual);
+    }
+    // One discovery poll with the cadence due. The fixture's adb hooks (a
+    // closed private port) keep a dispatched Enumerate off any real adb.
+    static void PollDueDiscovery(OkuFlowApp& app) {
+        app.phoneDiscoveryTimer_.invalidate();
+        const bool initialized=app.initialized_; app.initialized_=true;
+        app.PollPhoneCameraDiscovery(); app.initialized_=initialized;
+    }
+    static void PollDiscovery(OkuFlowApp& app) {
+        const bool initialized=app.initialized_; app.initialized_=true;
+        app.PollPhoneCameraDiscovery(); app.initialized_=initialized;
+    }
+    // Leaves no camera or phone-link state of one slot to the next: work in
+    // flight is drained first (a queued start dropped, a running camera
+    // stopped and its stop finished, a dispatched discovery waited for),
+    // then every piece of state a slot can change is put back.
     static void ResetCameraFixture(OkuFlowApp& app) {
         app.pipelineOrchestrator_->CancelCameraReconnect();
+        app.pendingCameraStart_.reset();
+        if(app.cameraActive_ && !app.cameraStopPending_)app.StopCameraCapture();
+        QElapsedTimer drain;drain.start();
+        while((app.cameraStopPending_ || app.cameraStartupPending_ ||
+               (app.startupWorkers_ && app.startupWorkers_->active.load()!=0)) && drain.elapsed()<5000) {
+            QCoreApplication::processEvents();std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        if(CameraPending(app))qWarning() << "Camera fixture reset with work still pending:" << CameraPendingDump(app);
+        app.pendingCameraStart_.reset();
+        if(app.phoneDiscovery_.valid()) {app.phoneDiscovery_.wait();app.phoneDiscovery_={};}
+        app.phoneLinkPending_.reset();app.phoneLinkKnown_=false;app.phoneLinkDecision_={};
+        app.phoneLinkTargetSerial_.clear();app.phoneDiscoveryStatus_={};app.phoneDiscoveryIntervalMs_=5000;
+        app.phoneDiscoveryTimer_.start();app.phoneRetries_.clear();
         app.cameraStartForTest_={};app.cameras_.clear();app.selectedCameraIndex_=-1;
-        app.currentCameraAccelerationKey_.clear();app.cameraIntent_.LoadSaved({});
-        app.automaticPhoneSelectionAllowed_=false;app.preferredPhoneCamera_.clear();app.pendingCameraStart_.reset();
+        app.currentCameraAccelerationKey_.clear();app.cameraFramePresented_=false;
+        if(const auto owner=app.cameraIntent_.TemporaryOwner();!owner.isEmpty())app.cameraIntent_.ReleaseTemporary(owner);
+        app.cameraIntent_.LoadSaved({});
+        app.cameraIntent_.Request({},agent::CameraSourceOrigin::Startup);
+        app.cameraIntent_.Deactivate();
+        auto& saved=app.settingsController_->MutableSettings();
+        saved.cameraSymbolicLink.clear();saved.cameraSelectionExplicit=false;saved.cameraIndex=-1;
+        app.automaticPhoneSelectionAllowed_=false;app.preferredPhoneCamera_.clear();
+        CaptureReadbackTestAccess::ForgetLastSymbolicLink(app.mediaCapture_);
+        {
+            const QSignalBlocker blocker(app.mainWindow_->cameraCombo());
+            app.mainWindow_->setVideoSourceSelected(false,-1);
+            app.PopulateCameraCombo();
+            app.mainWindow_->cameraCombo()->setCurrentIndex(-1);
+        }
     }
     static QString DocumentDirectory(OkuFlowApp& app) { return app.userDataPaths_->Documents(); }
     static CameraDescriptor SeedPhoneSources(OkuFlowApp& app, std::function<bool(const std::atomic<bool>&)> start) {
@@ -442,6 +548,103 @@ public:
         message.message=WM_DEVICECHANGE;message.wParam=action;message.lParam=reinterpret_cast<LPARAM>(device);
         const auto initialized=app.initialized_;app.initialized_=true;
         app.mainWindow_->nativeEvent({},&message,nullptr);app.initialized_=initialized;
+    }
+    static void PowerBroadcast(OkuFlowApp& app,WPARAM event) {
+        MSG message{};message.hwnd=reinterpret_cast<HWND>(app.mainWindow_->effectiveWinId());
+        message.message=WM_POWERBROADCAST;message.wParam=event;
+        const auto initialized=app.initialized_;app.initialized_=true;
+        app.mainWindow_->nativeEvent({},&message,nullptr);app.initialized_=initialized;
+    }
+    // WM_POWERBROADCAST / PBT_POWERSETTINGCHANGE for the console display state.
+    static void ConsoleDisplay(OkuFlowApp& app,DWORD state) {
+        static const GUID kConsoleDisplayState{0x6fe69556,0x704a,0x47a0,{0x8f,0x24,0xc2,0x8d,0x93,0x6f,0xda,0x47}};
+        QByteArray bytes(int(offsetof(POWERBROADCAST_SETTING,Data)+sizeof(DWORD)),0);
+        auto* setting=reinterpret_cast<POWERBROADCAST_SETTING*>(bytes.data());
+        setting->PowerSetting=kConsoleDisplayState;setting->DataLength=sizeof(DWORD);
+        std::memcpy(setting->Data,&state,sizeof(state));
+        MSG message{};message.hwnd=reinterpret_cast<HWND>(app.mainWindow_->effectiveWinId());
+        message.message=WM_POWERBROADCAST;message.wParam=PBT_POWERSETTINGCHANGE;
+        message.lParam=reinterpret_cast<LPARAM>(bytes.data());
+        const auto initialized=app.initialized_;app.initialized_=true;
+        app.mainWindow_->nativeEvent({},&message,nullptr);app.initialized_=initialized;
+    }
+    // The real MainWindow signal; idleMs back-dates the deactivation.
+    static void Activation(OkuFlowApp& app,bool active,qint64 idleMs=0) {
+        const auto initialized=app.initialized_;app.initialized_=true;
+        emit app.mainWindow_->windowActivationChanged(active);
+        if (!active && idleMs) app.deactivatedAtMs_=QDateTime::currentMSecsSinceEpoch()-idleMs;
+        app.initialized_=initialized;
+    }
+    // One doctor verdict as the discovery worker would hand it to the UI.
+    static void SetPhoneDiagnosis(OkuFlowApp& app,PhoneLinkDiagnosis diagnosis,PhoneLinkAction action) {
+        app.phoneLinkKnown_=true;app.phoneLinkDecision_={};
+        app.phoneLinkDecision_.diagnosis=diagnosis;app.phoneLinkDecision_.action=action;
+        app.phoneLinkDecision_.nextPollMs=1;
+        app.UpdateProcessingStatusLabel();
+    }
+    static void ClearPhoneDiagnosis(OkuFlowApp& app) {app.phoneLinkKnown_=false;app.phoneLinkDecision_={};}
+    // The same verdict through the real poll path: a finished discovery
+    // worker hands its report to PollPhoneCameraDiscovery, which alone must
+    // refresh what the user sees and hears (no camera runs, no frames).
+    static void DeliverPhoneDiagnosis(OkuFlowApp& app,PhoneLinkDiagnosis diagnosis,PhoneLinkAction action) {
+        auto report=std::make_shared<PhoneLinkReport>();
+        report->decision.diagnosis=diagnosis;report->decision.action=action;
+        report->decision.nextPollMs=std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count()+60000;
+        std::promise<std::pair<PhoneDiscoveryStatus,std::vector<CameraDescriptor>>> ready;
+        app.phoneDiscovery_=ready.get_future();
+        ready.set_value({PhoneDiscoveryStatus::OwnedServerRecovering,{}});
+        app.phoneLinkPending_=report;
+        app.phoneDiscoveryTimer_.start(); // No real discovery can be dispatched by this fixture.
+        const bool initialized=app.initialized_; app.initialized_=true;
+        app.PollPhoneCameraDiscovery(); app.initialized_=initialized;
+    }
+    // A discovery result with cameras and a doctor verdict in the same poll.
+    static void DeliverDiscoveryAndDiagnosis(OkuFlowApp& app,std::vector<CameraDescriptor> phones,
+                                             PhoneLinkDiagnosis diagnosis,PhoneLinkAction action,std::string target) {
+        auto report=std::make_shared<PhoneLinkReport>();
+        report->decision.diagnosis=diagnosis;report->decision.action=action;report->targetSerial=std::move(target);
+        report->decision.nextPollMs=std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count()+60000;
+        std::promise<std::pair<PhoneDiscoveryStatus,std::vector<CameraDescriptor>>> ready;
+        app.phoneDiscovery_=ready.get_future();
+        app.phoneDiscoveryIntentGeneration_=app.cameraIntent_.Requested().generation;
+        ready.set_value({PhoneDiscoveryStatus::Listed,std::move(phones)});
+        app.phoneLinkPending_=report;
+        app.phoneDiscoveryTimer_.start();
+        const bool initialized=app.initialized_; app.initialized_=true;
+        app.PollPhoneCameraDiscovery(); app.initialized_=initialized;
+    }
+    static void ShowToast(OkuFlowApp& app,const QString& text) {app.ShowStatusMessage(text,60000,LivePoliteness::kPolite);}
+    static void ClearToast(OkuFlowApp& app) {app.transientStatusMessage_.clear();}
+    static QString StatusText(OkuFlowApp& app) {return app.uiState_->processingStatusLabel_->text();}
+    static QString StatusName(OkuFlowApp& app) {return app.uiState_->processingStatusLabel_->accessibleName();}
+    // The live-region helper records each announcement it made (text and
+    // time) on the widget (src/ui/live_status_text.cpp).
+    static bool StatusAnnounced(OkuFlowApp& app,const QString& text) {
+        return app.uiState_->processingStatusLabel_->property("_okuflowLiveTextAnnouncementHistory").toMap().contains(text);
+    }
+    // When that announcement was made (ms since the epoch; 0 when none).
+    static qint64 StatusAnnouncedAtMs(OkuFlowApp& app,const QString& text) {
+        return app.uiState_->processingStatusLabel_->property("_okuflowLiveTextAnnouncementHistory").toMap()
+            .value(text).toLongLong();
+    }
+    static QString PlaceholderTitle(OkuFlowApp& app) {return app.mainWindow_->cameraPlaceholderTitle_->text();}
+    static QString PlaceholderDetail(OkuFlowApp& app) {return app.mainWindow_->cameraPlaceholderDetail_->text();}
+    // A fallback webcam (index 0) is live while the phone stays the wanted camera.
+    static void FallbackWebcamLive(OkuFlowApp& app,bool live) {
+        app.cameraActive_=live;app.selectedCameraIndex_=live?0:1;
+    }
+    static void ExplicitWebcamChoice(OkuFlowApp& app) {app.automaticPhoneSelectionAllowed_=false;}
+    // No real discovery is dispatched: the hold keeps the poll's cadence closed.
+    static void HoldPhoneDiscovery(OkuFlowApp& app) {app.phoneDiscoveryTimer_.start();}
+    static bool PhoneDiscoveryDue(const OkuFlowApp& app) {return !app.phoneDiscoveryTimer_.isValid();}
+    static void FailPhoneRetry(OkuFlowApp& app) {
+        auto& retry=app.phoneRetries_["fixture-only"];retry.Observe(1,true,"");
+        retry.Failed(static_cast<std::int64_t>(GetTickCount64()));
+    }
+    static bool PhoneRetryBlocked(OkuFlowApp& app) {
+        return !app.phoneRetries_["fixture-only"].CanAttempt(static_cast<std::int64_t>(GetTickCount64()));
     }
     static void WebcamOnly(OkuFlowApp& app) {
         app.cameras_.resize(1);app.selectedCameraIndex_=0;
@@ -2333,7 +2536,7 @@ private slots:
         QTRY_COMPARE(calls->load(),1);
         QVERIFY(NativeControlFixture::Window(app_).cameraCombo()->isEnabled());
         NativeControlFixture::PickFixtureWebcam(app_);
-        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
         QCOMPARE(calls->load(),2); QVERIFY(NativeControlFixture::CameraActive(app_));
         QVERIFY(!NativeControlFixture::PhoneIntentRetained(app_));
         NativeControlFixture::DiscoverFixturePhone(app_);
@@ -2344,8 +2547,8 @@ private slots:
         auto calls=std::make_shared<std::atomic<int>>(0);
         const auto cleanup=qScopeGuard([&] {
             NativeControlFixture::StopCamera(app_);
-            QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
-            NativeControlFixture::ResetCameraFixture(app_);
+            NativeControlFixture::ResetCameraFixture(app_); // Drains first, also after a failure.
+            QVERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
         });
         const auto phone=NativeControlFixture::SeedPhoneSources(app_,[calls](const std::atomic<bool>&) {++*calls;return true;});
         NativeControlFixture::WebcamOnly(app_);
@@ -2361,26 +2564,314 @@ private slots:
         QCOMPARE(window.cameraCombo()->currentData().toString(),QStringLiteral("phone"));
         QVERIFY(window.cameraFormatCombo()->parentWidget()->isHidden());
         NativeControlFixture::DiscoverFixturePhone(app_,&phone,false);
-        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
         QCOMPARE(calls->load(),1); // Only the fallback, never the old discovery's phone.
         QCOMPARE(window.cameraCombo()->currentData().toString(),QStringLiteral("phone"));
         NativeControlFixture::DiscoverFixturePhone(app_,&phone);
-        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        // Iteration 6 (7): the phone's start waits for the fallback webcam to
+        // stop; no new discovery (and link ladder) is dispatched meanwhile.
+        QVERIFY(!NativeControlFixture::PhoneDiscoveryInFlight(app_));
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
         QVERIFY(NativeControlFixture::CameraActive(app_));
         QCOMPARE(calls->load(),2);
         QVERIFY(NativeControlFixture::PhoneIntentRetained(app_));
         QCOMPARE(NativeControlFixture::QuickModeSettings(app_).cameraSymbolicLink,QStringLiteral("okuflow-phone:fixture-only"));
     }
+    void discoveryKeepsRunningWhileAPickWaitsForARecording() {
+        // Iteration 7 (1): a manual start while a recording is open is only
+        // queued until the recording ends, which can be a whole lecture.
+        // Discovery (and with it the phone link ladder) keeps running
+        // meanwhile: a new discovery is dispatched and its result consumed.
+        auto calls=std::make_shared<std::atomic<int>>(0);
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::ResetCameraFixture(app_); // Drops the queued start first.
+            NativeControlFixture::CleanupVideoRecording(app_);
+            QVERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
+        });
+        NativeControlFixture::SeedPhoneSources(app_,[calls](const std::atomic<bool>&) {++*calls;return true;});
+        const auto session=NativeControlFixture::StartSilentVideoRecording(app_);
+        QVERIFY(session);
+        QVERIFY(NativeControlFixture::ManualStartWhileRecording(app_,1));
+        // The start waits for the recording (CameraPending counts a queued start).
+        QVERIFY2(NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
+        QVERIFY(!NativeControlFixture::PhoneDiscoveryInFlight(app_));
+        QCOMPARE(NativeControlFixture::LastPhoneDiscoveryStatus(app_),PhoneDiscoveryStatus::Unknown);
+        NativeControlFixture::PollDueDiscovery(app_);
+        QVERIFY2(NativeControlFixture::PhoneDiscoveryInFlight(app_),NativeControlFixture::CameraPendingDump(app_).constData());
+        QTRY_VERIFY((NativeControlFixture::PollDiscovery(app_),
+                     NativeControlFixture::LastPhoneDiscoveryStatus(app_)!=PhoneDiscoveryStatus::Unknown));
+        QVERIFY(NativeControlFixture::Recording(app_).has_value());
+        QVERIFY(NativeControlFixture::CameraPending(app_)); // Still queued behind the recording.
+        QCOMPARE(calls->load(),0);
+    }
+    void automaticDiscoveryWaitsForAReadyPhone() {
+        // Iteration 4 (A6): with no camera running, a saved phone whose
+        // companion is not ready (locked, paused) is not started by
+        // automatic discovery; capture starts once the probe reports ready.
+        auto calls=std::make_shared<std::atomic<int>>(0);
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::StopCamera(app_);
+            NativeControlFixture::ResetCameraFixture(app_); // Drains first, also after a failure.
+            QVERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
+        });
+        auto phone=NativeControlFixture::SeedPhoneSources(app_,[calls](const std::atomic<bool>&) {++*calls;return true;});
+        QVERIFY(!NativeControlFixture::CameraActive(app_));
+        phone.phoneAppReady=false;
+        NativeControlFixture::DiscoverFixturePhone(app_,&phone);
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
+        QVERIFY(!NativeControlFixture::PhoneCameraRunning(app_)); // At most the fallback webcam.
+        phone.phoneAppReady=true;
+        NativeControlFixture::DiscoverFixturePhone(app_,&phone);
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
+        QVERIFY(NativeControlFixture::PhoneCameraRunning(app_));
+    }
+    void differentPhoneSentenceIsNotShownBeforeTheSwitch() {
+        // Iteration 4 (B7): the saved phone is absent, another ready phone is
+        // listed and the doctor says "a different phone is connected". OkuFlow
+        // switches to the ready phone (kept by decision) in the same poll, so
+        // that sentence is not shown for the cycle before.
+        auto calls=std::make_shared<std::atomic<int>>(0);
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::ClearPhoneDiagnosis(app_);
+            NativeControlFixture::StopCamera(app_);
+            NativeControlFixture::ResetCameraFixture(app_); // Drains first, also after a failure.
+            QVERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
+        });
+        NativeControlFixture::SeedPhoneSources(app_,[calls](const std::atomic<bool>&) {++*calls;return true;});
+        CameraDescriptor other;
+        other.name=L"Other private phone"; other.symbolicLink=L"okuflow-phone:other-fixture";
+        other.phoneSerial="other-fixture"; other.phoneAppReady=true; other.phoneTransportId=92;
+        const auto different=PhoneLinkPlaceholderText(PhoneLinkDiagnosis::WantedPhoneNotAttached,true);
+        NativeControlFixture::DeliverDiscoveryAndDiagnosis(app_,{other},PhoneLinkDiagnosis::WantedPhoneNotAttached,
+                                                           PhoneLinkAction::WaitForUser,"fixture-only");
+        QVERIFY(NativeControlFixture::StatusText(app_)!=different.spoken);
+        QVERIFY(NativeControlFixture::PlaceholderDetail(app_)!=different.detail);
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
+        QVERIFY(NativeControlFixture::PhoneCameraRunning(app_));
+    }
+    void resumeAndDeviceRemovalReachTheApplication() {
+        // Private offscreen fixture: synthetic window messages only, no adb or phone.
+        NativeControlFixture::HoldPhoneDiscovery(app_);NativeControlFixture::FailPhoneRetry(app_);
+        QVERIFY(NativeControlFixture::PhoneRetryBlocked(app_));
+        NativeControlFixture::PowerBroadcast(app_,PBT_APMSUSPEND);
+        QVERIFY(!NativeControlFixture::PhoneDiscoveryDue(app_)); // Suspend only records the event.
+        NativeControlFixture::PowerBroadcast(app_,PBT_APMRESUMEAUTOMATIC);
+        QVERIFY(NativeControlFixture::PhoneDiscoveryDue(app_)); // Resume: immediate discovery,
+        QVERIFY(!NativeControlFixture::PhoneRetryBlocked(app_)); // and pre-sleep budgets are void.
+        NativeControlFixture::HoldPhoneDiscovery(app_);NativeControlFixture::FailPhoneRetry(app_);
+        NativeControlFixture::PowerBroadcast(app_,PBT_APMRESUMESUSPEND);
+        QVERIFY(NativeControlFixture::PhoneDiscoveryDue(app_));QVERIFY(!NativeControlFixture::PhoneRetryBlocked(app_));
+        NativeControlFixture::HoldPhoneDiscovery(app_);NativeControlFixture::FailPhoneRetry(app_);
+        NativeControlFixture::UsbArrival(app_,true,true,DBT_DEVICEREMOVECOMPLETE);
+        QVERIFY(NativeControlFixture::PhoneDiscoveryDue(app_));QVERIFY(!NativeControlFixture::PhoneRetryBlocked(app_));
+        NativeControlFixture::HoldPhoneDiscovery(app_);
+        NativeControlFixture::UsbArrival(app_,false,true,DBT_DEVICEREMOVECOMPLETE); // Not an ADB interface.
+        QVERIFY(!NativeControlFixture::PhoneDiscoveryDue(app_));
+    }
+    void resumeKeepsAPhoneThatDeliversWithoutPresenting() {
+        // Iteration 8 (A5): the resume check counted presented frames, and
+        // nothing is presented while a media view is shown (a PDF page, the
+        // recording) or the window is minimized or covered: a healthy phone
+        // session was torn down 3 s after every resume. It counts frames the
+        // capture delivers. Offscreen, a fixture camera start, no adb.
+        const auto cleanup=qScopeGuard([&] {NativeControlFixture::ResetCameraFixture(app_);});
+        NativeControlFixture::SeedPhoneSources(app_,[](const std::atomic<bool>&) {return true;});
+        QVERIFY(NativeControlFixture::StartFixturePhone(app_));
+        QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::PhoneCameraRunning(app_)&&!NativeControlFixture::CameraPending(app_),5000);
+        QVERIFY(NativeControlFixture::DeliverCameraFrames(app_,1));
+        const auto presented=NativeControlFixture::PresentedCameraFrames(app_);
+        QTimer delivering;
+        QObject::connect(&delivering,&QTimer::timeout,&delivering,[this] {NativeControlFixture::DeliverCameraFrames(app_,3);});
+        delivering.start(100);
+        NativeControlFixture::PowerBroadcast(app_,PBT_APMRESUMEAUTOMATIC);
+        QTest::qWait(3600);
+        delivering.stop();
+        QCOMPARE(NativeControlFixture::PresentedCameraFrames(app_),presented); // Nothing presented meanwhile.
+        QVERIFY(NativeControlFixture::PhoneCameraRunning(app_));
+        QVERIFY(!NativeControlFixture::ReconnectPending(app_));
+        // The counterpart: a session that delivers nothing after the resume
+        // is torn down and reconnected.
+        NativeControlFixture::PowerBroadcast(app_,PBT_APMRESUMESUSPEND);
+        QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::ReconnectPending(app_)||!NativeControlFixture::PhoneCameraRunning(app_),6000);
+    }
+    void aSourceChangeRevokesTheRunningLadder() {
+        // Iteration 8 (A4), made real in iteration 9 (B1): a discovery cycle
+        // the application dispatched runs; the user picks the webcam while
+        // it runs (after its observation, before the doctor decides). The
+        // cycle's request is stale: it does not decide (nothing reserved)
+        // and does nothing. The old version only checked that a counter grows.
+        auto reached=std::make_shared<std::atomic<bool>>(false);
+        auto release=std::make_shared<std::atomic<bool>>(false);
+        const auto cleanup=qScopeGuard([&] {
+            release->store(true);
+            NativeControlFixture::ResetCameraFixture(app_);
+            NativeControlFixture::SetLinkStageHook({});
+        });
+        NativeControlFixture::SeedPhoneSources(app_,[](const std::atomic<bool>&) {return true;});
+        NativeControlFixture::RefreshPhoneIntent(app_);
+        const auto before=NativeControlFixture::PhoneIntentGeneration(app_);
+        NativeControlFixture::RefreshPhoneIntent(app_);
+        QCOMPARE(NativeControlFixture::PhoneIntentGeneration(app_),before);
+        // Holds the first cycle at the doctor's door until the pick is made.
+        NativeControlFixture::SetLinkStageHook([reached,release](std::string_view at) {
+            if(at!="decide" || reached->exchange(true))return;
+            const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+            while(!release->load() && std::chrono::steady_clock::now()<deadline)
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        });
+        NativeControlFixture::PollDueDiscovery(app_);
+        QVERIFY(NativeControlFixture::PhoneDiscoveryInFlight(app_));
+        const auto report=NativeControlFixture::PendingLinkReport(app_);
+        QVERIFY(report);
+        QTRY_VERIFY_WITH_TIMEOUT(reached->load(),5000);
+        NativeControlFixture::PickFixtureWebcam(app_);
+        QVERIFY(NativeControlFixture::PhoneIntentGeneration(app_)>before);
+        release->store(true);
+        QTRY_VERIFY_WITH_TIMEOUT((NativeControlFixture::PollDiscovery(app_),
+                                  NativeControlFixture::PendingLinkReport(app_)!=report),5000);
+        QCOMPARE(QString::fromStdString(report->actionResult),
+                 QStringLiteral("dropped before its decision: the source changed"));
+        QCOMPARE(int(report->decision.action),int(PhoneLinkAction::None));
+        QTRY_VERIFY_WITH_TIMEOUT(!NativeControlFixture::CameraPending(app_),5000);
+    }
+    void aPickOfTheChosenPhoneRevokesNothing() {
+        // Iteration 9 (A2): every manual pick forced a new generation, also a
+        // pick of the phone already chosen. A cycle in flight then dropped
+        // its action, a launch for the phone the user just asked for. Only a
+        // pick that changes the intent advances it.
+        const auto cleanup=qScopeGuard([&] {NativeControlFixture::ResetCameraFixture(app_);});
+        NativeControlFixture::SeedPhoneSources(app_,[](const std::atomic<bool>&) {return true;});
+        NativeControlFixture::PickPhoneAt(app_,1);
+        QTRY_VERIFY_WITH_TIMEOUT(!NativeControlFixture::CameraPending(app_),5000);
+        const auto chosen=NativeControlFixture::PhoneIntentGeneration(app_);
+        NativeControlFixture::PickPhoneAt(app_,1); // The same phone again.
+        QCOMPARE(NativeControlFixture::PhoneIntentGeneration(app_),chosen);
+        QTRY_VERIFY_WITH_TIMEOUT(!NativeControlFixture::CameraPending(app_),5000);
+        NativeControlFixture::PickAutomaticPhone(app_); // Any phone: a different intent.
+        const auto any=NativeControlFixture::PhoneIntentGeneration(app_);
+        QVERIFY(any>chosen);
+        NativeControlFixture::PickAutomaticPhone(app_); // Any phone again.
+        QCOMPARE(NativeControlFixture::PhoneIntentGeneration(app_),any);
+        NativeControlFixture::PickFixtureWebcam(app_); // A webcam: it changes.
+        QVERIFY(NativeControlFixture::PhoneIntentGeneration(app_)>any);
+        QTRY_VERIFY_WITH_TIMEOUT(!NativeControlFixture::CameraPending(app_),5000);
+    }
+    void aHiddenLivePhoneSessionIsConnectedForTheDoctor() {
+        // Iteration 9 (A9): the cycle's "a live session streams" measured
+        // presented frames, and nothing is presented behind a media view (a
+        // PDF page, the recording) or in a minimized window: the doctor did
+        // not see the live session and could decide to stop the server it
+        // uses. It counts frames the capture delivers.
+        const auto cleanup=qScopeGuard([&] {NativeControlFixture::ResetCameraFixture(app_);});
+        NativeControlFixture::SeedPhoneSources(app_,[](const std::atomic<bool>&) {return true;});
+        QVERIFY(NativeControlFixture::StartFixturePhone(app_));
+        QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::PhoneCameraRunning(app_)&&!NativeControlFixture::CameraPending(app_),5000);
+        const auto presented=NativeControlFixture::PresentedCameraFrames(app_);
+        QVERIFY(NativeControlFixture::DeliverCameraFrames(app_,3));
+        NativeControlFixture::PollDueDiscovery(app_);
+        const auto report=NativeControlFixture::PendingLinkReport(app_);
+        QVERIFY(report);
+        QTRY_VERIFY_WITH_TIMEOUT((NativeControlFixture::PollDiscovery(app_),
+                                  NativeControlFixture::PendingLinkReport(app_)!=report),5000);
+        QCOMPARE(NativeControlFixture::PresentedCameraFrames(app_),presented); // Nothing presented.
+        QVERIFY(report->observation.sessionStreaming);
+        QCOMPARE(int(report->decision.diagnosis),int(PhoneLinkDiagnosis::Connected));
+    }
+    void phoneSentenceIsShownAndSpokenForEveryDiagnosis() {
+        // B1/B2/E4, and iteration 3 B1: every verdict arrives through the
+        // real PollPhoneCameraDiscovery path, which alone must update the
+        // placeholder and the spoken status line. Offscreen, no adb, no phone.
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::ClearToast(app_);
+            NativeControlFixture::ClearPhoneDiagnosis(app_);
+            NativeControlFixture::FallbackWebcamLive(app_,false);
+            NativeControlFixture::ResetCameraFixture(app_);
+        });
+        NativeControlFixture::SeedPhoneSources(app_,[](const std::atomic<bool>&) {return true;});
+        NativeControlFixture::FallbackWebcamLive(app_,false);
+        for (int i=0;i<kPhoneLinkDiagnosisCount;++i) {
+            for (const auto action:{PhoneLinkAction::Relist,PhoneLinkAction::WaitForUser}) {
+                const auto diagnosis=static_cast<PhoneLinkDiagnosis>(i);
+                const auto expected=PhoneLinkPlaceholderText(diagnosis,
+                    PhoneLinkWaitsForUser(diagnosis)||action==PhoneLinkAction::WaitForUser);
+                NativeControlFixture::DeliverPhoneDiagnosis(app_,diagnosis,action);
+                if (expected.title.isEmpty()) continue;
+                const QByteArray name(PhoneLinkDiagnosisName(diagnosis).data());
+                QVERIFY2(NativeControlFixture::StatusText(app_)==expected.spoken,name.constData());
+                QVERIFY2(NativeControlFixture::StatusName(app_).contains(expected.spoken),name.constData());
+                QVERIFY2(NativeControlFixture::PlaceholderTitle(app_)==expected.title,name.constData());
+                QVERIFY2(NativeControlFixture::PlaceholderDetail(app_)==expected.detail,name.constData());
+            }
+        }
+        const QString replug=QStringLiteral("Unplug the phone's USB cable and plug it back in.");
+        // Iteration 3 (B2): a notification does not replace the instruction
+        // while the phone sentence owns the status line.
+        NativeControlFixture::ShowToast(app_,QStringLiteral("Recording stopped"));
+        NativeControlFixture::DeliverPhoneDiagnosis(app_,PhoneLinkDiagnosis::ReplugCable,PhoneLinkAction::WaitForUser);
+        QCOMPARE(NativeControlFixture::StatusText(app_),replug);
+        // Iteration 4 (A2): it is still announced once through the live region.
+        QVERIFY(NativeControlFixture::StatusAnnounced(app_,QStringLiteral("Recording stopped")));
+        // Iteration 5 (8): once, across later label refreshes, also after the
+        // live region's 5 s duplicate window (which alone would let it repeat).
+        const qint64 announcedAt=NativeControlFixture::StatusAnnouncedAtMs(app_,QStringLiteral("Recording stopped"));
+        QVERIFY(announcedAt>0);
+        QTest::qWait(5200);
+        for (int refresh=0;refresh<3;++refresh) {
+            NativeControlFixture::DeliverPhoneDiagnosis(app_,PhoneLinkDiagnosis::ReplugCable,PhoneLinkAction::WaitForUser);
+            QCOMPARE(NativeControlFixture::StatusText(app_),replug);
+        }
+        QCOMPARE(NativeControlFixture::StatusAnnouncedAtMs(app_,QStringLiteral("Recording stopped")),announcedAt);
+        NativeControlFixture::ClearToast(app_);
+        // The phone sentence wins over the generic reconnect text.
+        NativeControlFixture::BeginReconnect(app_);
+        QVERIFY(NativeControlFixture::ReconnectPending(app_));
+        NativeControlFixture::SetPhoneDiagnosis(app_,PhoneLinkDiagnosis::ReplugCable,PhoneLinkAction::WaitForUser);
+        QCOMPARE(NativeControlFixture::StatusText(app_),replug);
+        QCOMPARE(NativeControlFixture::PlaceholderDetail(app_),replug);
+        NativeControlFixture::CancelReconnect(app_);
+        // Over a live fallback webcam the instruction stays in the status line.
+        NativeControlFixture::FallbackWebcamLive(app_,true);
+        NativeControlFixture::SetPhoneDiagnosis(app_,PhoneLinkDiagnosis::Unauthorized,PhoneLinkAction::WaitForUser);
+        QCOMPARE(NativeControlFixture::StatusText(app_),PhoneLinkPlaceholderText(PhoneLinkDiagnosis::Unauthorized,true).spoken);
+        NativeControlFixture::SetPhoneDiagnosis(app_,PhoneLinkDiagnosis::NotListedByServer,PhoneLinkAction::Relist);
+        QCOMPARE(NativeControlFixture::StatusText(app_),QStringLiteral("Restoring USB connection…"));
+        // Connected, or an explicit webcam choice, gives the line back.
+        NativeControlFixture::SetPhoneDiagnosis(app_,PhoneLinkDiagnosis::Connected,PhoneLinkAction::None);
+        QVERIFY(NativeControlFixture::StatusText(app_)!=QStringLiteral("Restoring USB connection…"));
+        NativeControlFixture::ExplicitWebcamChoice(app_);
+        NativeControlFixture::SetPhoneDiagnosis(app_,PhoneLinkDiagnosis::ReplugCable,PhoneLinkAction::WaitForUser);
+        QVERIFY(NativeControlFixture::StatusText(app_)!=replug);
+    }
+    void displayOnAndActivationAfterIdleReachTheApplication() {
+        // E4: the display-on power setting and activation after idle are link events.
+        NativeControlFixture::HoldPhoneDiscovery(app_);NativeControlFixture::FailPhoneRetry(app_);
+        NativeControlFixture::ConsoleDisplay(app_,1); // On without a preceding off: no event.
+        QVERIFY(!NativeControlFixture::PhoneDiscoveryDue(app_));
+        NativeControlFixture::ConsoleDisplay(app_,0);
+        QVERIFY(!NativeControlFixture::PhoneDiscoveryDue(app_));
+        NativeControlFixture::ConsoleDisplay(app_,1);
+        QVERIFY(NativeControlFixture::PhoneDiscoveryDue(app_));
+        QVERIFY(!NativeControlFixture::PhoneRetryBlocked(app_));
+        NativeControlFixture::HoldPhoneDiscovery(app_);NativeControlFixture::FailPhoneRetry(app_);
+        NativeControlFixture::Activation(app_,false,1000);
+        NativeControlFixture::Activation(app_,true); // Short absence: nothing.
+        QVERIFY(!NativeControlFixture::PhoneDiscoveryDue(app_));
+        NativeControlFixture::Activation(app_,false,130000);
+        NativeControlFixture::Activation(app_,true); // After two idle minutes: an event.
+        QVERIFY(NativeControlFixture::PhoneDiscoveryDue(app_));
+        QVERIFY(!NativeControlFixture::PhoneRetryBlocked(app_));
+        NativeControlFixture::HoldPhoneDiscovery(app_);
+    }
     void usbReplugSelectsPhoneAfterManualWebcamButRepeatedDiscoveryDoesNot() {
         auto calls=std::make_shared<std::atomic<int>>(0);
         const auto cleanup=qScopeGuard([&] {
             NativeControlFixture::StopCamera(app_);
-            QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
-            NativeControlFixture::ResetCameraFixture(app_);
+            NativeControlFixture::ResetCameraFixture(app_); // Drains first, also after a failure.
+            QVERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
         });
         NativeControlFixture::SeedPhoneSources(app_,[calls](const std::atomic<bool>&) {++*calls;return true;});
         NativeControlFixture::PickFixtureWebcam(app_);
-        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));QCOMPARE(calls->load(),1);
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());QCOMPARE(calls->load(),1);
         NativeControlFixture::DiscoverFixturePhone(app_);
         QCOMPARE(calls->load(),1); // Ordinary polling respects manual webcam intent.
         NativeControlFixture::UsbArrival(app_,false);
@@ -2388,23 +2879,23 @@ private slots:
         NativeControlFixture::UsbArrival(app_,true,true,DBT_DEVICEREMOVECOMPLETE);
         QCOMPARE(NativeControlFixture::Window(app_).cameraCombo()->currentIndex(),0);
         NativeControlFixture::UsbArrival(app_);
-        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
         QCOMPARE(NativeControlFixture::Window(app_).cameraCombo()->currentData().toString(),QStringLiteral("phone"));
         NativeControlFixture::DiscoverFixturePhone(app_);
-        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
         QCOMPARE(calls->load(),2);QVERIFY(NativeControlFixture::PhoneIntentRetained(app_));
         NativeControlFixture::UsbArrival(app_);NativeControlFixture::DiscoverFixturePhone(app_);
         QCOMPARE(calls->load(),2); // No restart of an already active phone.
         NativeControlFixture::StopCamera(app_);
-        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
         const auto phoneChoice=NativeControlFixture::QuickModeSettings(app_).cameraSymbolicLink;
         NativeControlFixture::UsbArrival(app_);
         QCOMPARE(NativeControlFixture::QuickModeSettings(app_).cameraSymbolicLink,phoneChoice);
         QVERIFY(NativeControlFixture::PhoneIntentRetained(app_));
         NativeControlFixture::DiscoverFixturePhone(app_);
-        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));QCOMPARE(calls->load(),3);
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());QCOMPARE(calls->load(),3);
         NativeControlFixture::PickFixtureWebcam(app_);
-        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));QCOMPARE(calls->load(),4);
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());QCOMPARE(calls->load(),4);
         NativeControlFixture::DiscoverFixturePhone(app_);QCOMPARE(calls->load(),4);
     }
     void documentPaneFitsSettingsAfterTabSwitch() {
@@ -2593,7 +3084,7 @@ private slots:
         const auto path=dir.filePath("picture.png");QVERIFY(image.save(path));
         NativeControlFixture::OpenVideo(app_,path);
         QTRY_VERIFY(NativeControlFixture::SelectedVideoFrame(app_)!=nullptr);
-        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
         QVERIFY(sawCancel->load());
         QVERIFY(NativeControlFixture::PhoneIntentRetained(app_));
         NativeControlFixture::DiscoverFixturePhone(app_);
@@ -2604,7 +3095,7 @@ private slots:
         QTRY_VERIFY(NativeControlFixture::CameraActive(app_));
         QCOMPARE(calls->load(),2);QVERIFY(NativeControlFixture::PhoneIntentRetained(app_));
         NativeControlFixture::StopCamera(app_);
-        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
         NativeControlFixture::DiscoverFixturePhone(app_);
         QTRY_VERIFY(NativeControlFixture::CameraActive(app_));
         QCOMPARE(calls->load(),3);QVERIFY(NativeControlFixture::PhoneIntentRetained(app_));
@@ -2640,7 +3131,7 @@ private slots:
         NativeControlFixture::StopCamera(app_);
         QVERIFY(NativeControlFixture::CameraPending(app_));
         pulse=false;QTimer::singleShot(0,&app_,[&] {pulse=true;});QTRY_VERIFY(pulse);
-        gate->release=true;QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        gate->release=true;QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
         QVERIFY(gate->sawCancel);
     }
     void asyncReconnectFailureSchedulesRetryRatherThanAnnouncingSuccess() {
@@ -2649,7 +3140,7 @@ private slots:
         QVERIFY(NativeControlFixture::StartBlockedCamera(app_,CameraSourceOrigin::Reconnect,
             [](const std::atomic<bool>&) {return false;}));
         QVERIFY(NativeControlFixture::ReconnectPending(app_));
-        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
         QVERIFY(NativeControlFixture::ReconnectPending(app_));
         QCOMPARE(NativeControlFixture::ReconnectAttempts(app_),1);
     }
@@ -2665,7 +3156,7 @@ private slots:
         NativeControlFixture::BeginReconnect(app_);
         QVERIFY(NativeControlFixture::StartBlockedCamera(app_,CameraSourceOrigin::Reconnect,
             [opens](const std::atomic<bool>&) {++*opens;return true;}));
-        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
         QVERIFY(NativeControlFixture::CameraActive(app_));
         QVERIFY(NativeControlFixture::ReconnectPending(app_)); // adoption is not video
         QVERIFY(NativeControlFixture::ReconnectDue(app_)); // exercise the active-reader guard, not the backoff guard
@@ -2678,11 +3169,11 @@ private slots:
         NativeControlFixture::PresentedCameraFrame(app_); // completion stays idempotent
         QVERIFY(!NativeControlFixture::ReconnectPending(app_));
         NativeControlFixture::StopCamera(app_);
-        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
         NativeControlFixture::BeginReconnect(app_);
         QVERIFY(NativeControlFixture::StartBlockedCamera(app_,CameraSourceOrigin::Reconnect,
             [opens](const std::atomic<bool>&) {++*opens;return true;}));
-        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
         QVERIFY(NativeControlFixture::CameraActive(app_));
         QVERIFY(NativeControlFixture::ReconnectPending(app_));
         // A failed active attempt is retired without renewing the recovery owner.
@@ -2690,10 +3181,10 @@ private slots:
         QVERIFY(!NativeControlFixture::CameraActive(app_));
         QVERIFY(NativeControlFixture::ReconnectPending(app_));
         QCOMPARE(NativeControlFixture::ReconnectAttempts(app_),1);
-        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
         QVERIFY(NativeControlFixture::StartBlockedCamera(app_,CameraSourceOrigin::Reconnect,
             [opens](const std::atomic<bool>&) {++*opens;return true;}));
-        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
         QVERIFY(NativeControlFixture::CameraActive(app_));
         // This successful adoption never delivers a frame and must expire.
         NativeControlFixture::ExpireReconnect(app_);
@@ -2702,7 +3193,7 @@ private slots:
         QVERIFY(!NativeControlFixture::CameraActive(app_));
         for(int tick=0;tick<20;++tick)NativeControlFixture::DriveReconnect(app_);
         QCOMPARE(opens->load(),3);
-        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
     }
     void nonReconnectVideoRetiresOldRecovery_data() {
         QTest::addColumn<int>("origin");
@@ -2721,7 +3212,7 @@ private slots:
         NativeControlFixture::BeginReconnect(app_);
         QVERIFY(NativeControlFixture::StartBlockedCamera(app_,CameraSourceOrigin(origin),
             [](const std::atomic<bool>&) {return true;}));
-        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QTRY_VERIFY2(!NativeControlFixture::CameraPending(app_),NativeControlFixture::CameraPendingDump(app_).constData());
         QVERIFY(NativeControlFixture::ReconnectPending(app_));
         NativeControlFixture::PresentedCameraFrame(app_);
         QVERIFY(!NativeControlFixture::ReconnectPending(app_));
@@ -3175,6 +3666,15 @@ int main(int argc,char** argv) {
     OkuFlowApp app(argc,argv);
     QCoreApplication::setApplicationName("OkuFlowNativeControlFixture-"+QUuid::createUuid().toString(QUuid::Id128));
     NativeControlFixture::Initialize(app,root.path());
+    {
+        QTcpServer reserve;
+        const bool bound=reserve.listen(QHostAddress::LocalHost,0);
+        PhoneAdbTestHooks adb;
+        adb.port=bound?reserve.serverPort():1; // Closed again below: nothing listens there.
+        adb.adbInterface=[] {return PhoneAdbInterface::Absent;};
+        NativeControlFixture::BaseAdbHooks()=adb;
+        SetPhoneAdbTestHooks(adb);
+    }
     bool stdio=false;for(int i=1;i<argc;++i)stdio|=QString::fromLocal8Bit(argv[i])=="--stdio-fixture";
     if(!stdio) {NativeAcceptance tests(app);return QTest::qExec(&tests,argc,argv);}
     mcp::AppIpcEndpoint endpoint(NativeControlFixture::Service(app));

@@ -3761,5 +3761,73 @@ Pilih Hubungkan ChatGPT di tab Asisten pada mode Tingkat Lanjut untuk masuk.</tr
         <source>Formula could not be read. The original image is unchanged.</source>
         <translation>Rumus tidak dapat dibaca. Gambar asli tidak berubah.</translation>
     </message>
+    <message>
+        <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
+        <translation>Sambungkan ponsel melalui USB, lalu di ponsel pilih Transfer file dan aktifkan USB debugging.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>Buka kunci ponsel Anda dan ketuk Izinkan pada pertanyaan USB debugging. Jika pertanyaan tidak muncul, cabut kabel USB lalu colokkan kembali.</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>OkuFlow Kamera tidak merespons di ponsel. Tutup aplikasinya di ponsel lalu buka lagi.</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>Cabut kabel USB ponsel lalu colokkan kembali.</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow tidak dapat memulai koneksi USB ke ponsel. Instal ulang OkuFlow, atau izinkan di program antivirus Anda.</translation>
+    </message>
+    <message>
+        <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>
+        <translation>Kamera ponsel tidak dapat dimulai. Tutup aplikasi kamera lain di ponsel, lalu buka lagi OkuFlow Kamera.</translation>
+    </message>
+    <message>
+        <source>A different phone is connected. Connect the phone you chose in OkuFlow, or choose the connected phone under Settings, Camera.</source>
+        <translation>Ponsel lain sedang terhubung. Hubungkan ponsel yang Anda pilih di OkuFlow, atau pilih ponsel yang terhubung di bawah Pengaturan, Kamera.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone.</source>
+        <translation>Buka kunci ponsel Anda.</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone.</source>
+        <translation>Buka OkuFlow Kamera di ponsel.</translation>
+    </message>
+    <message>
+        <source>Install OkuFlow Camera on the phone.</source>
+        <translation>Pasang OkuFlow Kamera di ponsel.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera and tap Resume streaming.</source>
+        <translation>Di ponsel, buka OkuFlow Kamera lalu ketuk Lanjutkan streaming.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming.</source>
+        <translation>Di ponsel, buka OkuFlow Kamera. Jika menunjukkan bahwa streaming dijeda, ketuk Lanjutkan streaming.</translation>
+    </message>
+    <message>
+        <source>Another computer or program is using the phone camera.</source>
+        <translation>Komputer atau program lain sedang menggunakan kamera ponsel.</translation>
+    </message>
+    <message>
+        <source>Camera access is blocked on the phone.</source>
+        <translation>Akses kamera diblokir di ponsel.</translation>
+    </message>
+    <message>
+        <source>The phone is too hot. Let it cool down.</source>
+        <translation>Ponsel terlalu panas. Biarkan ponsel mendingin terlebih dahulu.</translation>
+    </message>
+    <message>
+        <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
+        <translation>Jendela OkuFlow lain sedang menggunakan ponsel. Tutup jendela itu untuk menggunakan ponsel di sini.</translation>
+    </message>
+    <message>
+        <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
+        <translation>Program lain sedang menggunakan koneksi USB ponsel. Tutup program itu atau mulai ulang komputer.</translation>
+    </message>
 </context>
 </TS>

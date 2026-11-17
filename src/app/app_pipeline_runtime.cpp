@@ -247,6 +247,36 @@ void OkuFlowApp::PopulateCameraCombo() {
     mainWindow_->setCameraDevices(names, selectedCameraIndex_);
 }
 
+void OkuFlowApp::RefreshPhoneIntentGeneration()
+{
+    const QString key = (cameraIntent_.TemporaryOwner().isEmpty() ? QStringLiteral("own|") : QStringLiteral("temporary|")) +
+        cameraIntent_.TemporaryPhoneIntent() + QLatin1Char('|') + preferredPhoneCamera_ + QLatin1Char('|') +
+        (automaticPhoneSelectionAllowed_ ? QStringLiteral("auto|") : QStringLiteral("manual|")) +
+        (FileSourceRequested() ? QStringLiteral("file") : QStringLiteral("camera"));
+    if (key == phoneIntentKey_) return;
+    phoneIntentKey_ = key;
+    phoneIntentGeneration_.fetch_add(1);
+}
+
+void OkuFlowApp::OnPhoneDiscoveryPulse()
+{
+    // A backstop for any source change without its own call: an in-flight
+    // ladder loses its authority within one pulse.
+    if (initialized_) RefreshPhoneIntentGeneration();
+    if (initialized_ && !phoneDiscoveryCanceled_.load()) {
+        // Sleep without a power broadcast (some modern-standby laptops): the
+        // 100 ms pulse sees the wall clock jump and treats it as a resume.
+        const qint64 wall = QDateTime::currentMSecsSinceEpoch();
+        const bool jumped = lastPulseWallMs_ && wall - lastPulseWallMs_ > 30000;
+        lastPulseWallMs_ = wall;
+        if (jumped) {
+            TracePhoneLink("wall clock advanced while the pulse was idle; treating it as a resume");
+            OnSystemResume();
+        }
+    }
+    PollPhoneCameraDiscovery();
+}
+
 void OkuFlowApp::PollPhoneCameraDiscovery()
 {
     if (!initialized_ || phoneDiscoveryCanceled_.load() || cameraStartupPending_ ||
@@ -257,6 +287,21 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
         try {
             auto [discoveryStatus, discovered] = phoneDiscovery_.get();
             phoneDiscoveryStatus_ = discoveryStatus;
+            if (phoneLinkPending_) {
+                const auto decision = phoneLinkPending_->decision;
+                phoneLinkTargetSerial_ = phoneLinkPending_->targetSerial;
+                phoneLinkPending_.reset();
+                phoneLinkKnown_ = decision.nextPollMs != 0;
+                if (phoneLinkKnown_) {
+                    phoneLinkDecision_ = decision;
+                    const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now().time_since_epoch()).count();
+                    // The doctor paces discovery: 1 s after an event, never above 10 s.
+                    phoneDiscoveryIntervalMs_ = std::clamp<qint64>(decision.nextPollMs - now, 0, 10000);
+                } else {
+                    phoneDiscoveryIntervalMs_ = 5000;
+                }
+            }
             if (discoveryStatus == PhoneDiscoveryStatus::Listed) {
                 const std::wstring selectedLink = selectedCameraIndex_ >= 0 &&
                         static_cast<size_t>(selectedCameraIndex_) < cameras_.size()
@@ -291,9 +336,19 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
                 const bool selectingAnyPhone = preferredPhoneCamera_ == QStringLiteral("okuflow-phone:");
                 const bool freshIntent = !selectingAnyPhone ||
                     phoneDiscoveryIntentGeneration_ == cameraIntent_.Requested().generation;
-                const int target = freshIntent && cameraIntent_.TemporaryOwner().isEmpty()
+                // Automatic discovery starts only a phone whose companion
+                // answered ready, also with no camera running: a locked or
+                // paused saved phone is woken and launched by the link
+                // ladder, and capture starts once its probe reports ready
+                // (a start would only spend its connect time showing
+                // "Starting camera." over the instruction). Manual picks
+                // are not restricted.
+                int target = freshIntent && cameraIntent_.TemporaryOwner().isEmpty()
                     ? ResolveAutomaticPhoneIndex(cameras_, preferredPhoneCamera_.toStdWString(),
-                        automaticPhoneSelectionAllowed_, cameraActive_) : -1;
+                        automaticPhoneSelectionAllowed_, true) : -1;
+                if (target >= 0 && phoneLinkKnown_ && phoneLinkDecision_.action == PhoneLinkAction::WaitForUser &&
+                    cameras_[static_cast<size_t>(target)].phoneSerial == phoneLinkTargetSerial_)
+                    target = -1; // The doctor waits for the user on this very phone.
                 const bool recording = recordingManager_ && recordingManager_->IsActive();
                 const bool sameRecordedSource = target >= 0 &&
                     cameras_[static_cast<size_t>(target)].symbolicLink == mediaCapture_.LastSymbolicLink();
@@ -315,20 +370,39 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
                         preferredPhoneCamera_ = saved.cameraSymbolicLink;
                     }
                     qInfo() << "Automatically connecting to USB phone camera";
+                    // The doctor named "a different phone is connected" for
+                    // the saved phone, but OkuFlow switches to that ready
+                    // phone now (the product's replacement rule): the
+                    // sentence would only flash for one cycle.
+                    if (phoneLinkKnown_ && phoneLinkDecision_.diagnosis == PhoneLinkDiagnosis::WantedPhoneNotAttached)
+                        phoneLinkKnown_ = false;
                     if (selectingAnyPhone) OnCameraSelectionChanged(target);
                     else StartCameraCapture(static_cast<size_t>(target), false, false, true);
                 } else if (!cameraActive_) {
                     StartFallbackCamera();
-                    UpdateCameraPlaceholder();
                 }
             }
-            UpdateCameraPlaceholder();
+            // Every discovery result reaches the status line, not only the
+            // (deliberately silent) placeholder: with no camera running there
+            // are no frames to refresh it, and the screen reader must hear a
+            // changed diagnosis.
+            UpdateProcessingStatusLabel();
         } catch (const std::exception& error) {
             qWarning() << "Background phone discovery failed:" << error.what();
         }
     }
-    if (cameraStartupPending_ || (phoneDiscoveryTimer_.isValid() &&
-                                  phoneDiscoveryTimer_.elapsed() < 5000)) return;
+    // No new discovery while a camera start is in flight, also one queued
+    // behind the previous camera's stop that is running now
+    // (pendingCameraStart_ with cameraStopPending_; start-up workers end the
+    // poll above): its result could not start anything (see above), and its
+    // link ladder could restart the server or reset the transport of the
+    // phone about to start, which registers as occupied only once its start
+    // runs. Both are bounded (the stop by its 1.5 s budget, then the start).
+    // A start that only waits for a recording to end (a manual pick while
+    // recording) does not hold discovery back: that wait lasts as long as
+    // the recording, and the link ladder must keep running meanwhile.
+    if (cameraStartupPending_ || (pendingCameraStart_ && cameraStopPending_) ||
+        (phoneDiscoveryTimer_.isValid() && phoneDiscoveryTimer_.elapsed() < phoneDiscoveryIntervalMs_)) return;
     std::string connectedSerial;
     if (cameraActive_ && selectedCameraIndex_ >= 0 &&
         static_cast<size_t>(selectedCameraIndex_) < cameras_.size())
@@ -343,14 +417,42 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
         recoverySerial = phoneIntent.mid(phonePrefix.size()).section('/', 0, 0).toStdString();
     phoneDiscoveryTimer_.start();
     phoneDiscoveryIntentGeneration_ = cameraIntent_.Requested().generation;
+    RefreshPhoneIntentGeneration();
+    PhoneLinkRequest linkRequest;
+    linkRequest.intentGeneration = phoneIntentGeneration_.load();
+    linkRequest.liveIntentGeneration = &phoneIntentGeneration_;
+    linkRequest.phoneWanted = permitPhone && phoneIntent.startsWith(phonePrefix);
+    // First start in automatic mode (no saved phone, no explicit webcam):
+    // an attached Windows ADB interface counts as wanting the phone, so the
+    // ladder runs before any re-plug or manual pick.
+    linkRequest.phoneWantedIfAttached = !temporarySource && automaticPhoneSelectionAllowed_ && phoneIntent.isEmpty();
+    linkRequest.captureAbandoned = mediaCapture_.WasAbandoned();
+    // Measured by frames the capture delivered, not presented: a media view
+    // (a PDF page, the recording) or a minimized or covered window presents
+    // nothing while a healthy session keeps delivering (as for the resume
+    // check). A live session is Connected for the doctor, which never
+    // decides a stop of the server it uses.
+    {
+        std::uint64_t delivered = 0;
+        if (!connectedSerial.empty() && cameraIngress_) {
+            std::scoped_lock lock(cameraIngress_->mutex);
+            delivered = cameraIngress_->delivered;
+        }
+        linkRequest.sessionStreaming = delivered != 0;
+    }
+    // The phone of the selected session, also before its first frame.
+    linkRequest.targetSerial = !connectedSerial.empty() ? connectedSerial : recoverySerial;
+    auto linkReport = std::make_shared<PhoneLinkReport>();
+    phoneLinkPending_ = linkReport;
     try {
         phoneDiscovery_ = std::async(std::launch::async, [connectedSerial, recoverySerial,
             serverIntent = permitPhone ? PhoneServerIntent::PhoneUse
                                                           : PhoneServerIntent::ReleaseForWebcam,
-            canceled = &phoneDiscoveryCanceled_]() {
+            canceled = &phoneDiscoveryCanceled_, linkRequest, linkReport]() {
             PhoneDiscoveryStatus status{};
             auto phones = PhoneCameraTransport::Enumerate(connectedSerial, canceled, nullptr,
-                                                         recoverySerial, &status, serverIntent);
+                                                         recoverySerial, &status, serverIntent,
+                                                         &linkRequest, linkReport.get());
             return std::make_pair(status, std::move(phones));
         });
     } catch (const std::exception& error) {
@@ -1508,6 +1610,7 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
         cameraIntent_.MarkFirstFrame(startingCameraIntentGeneration_);
         if (controlTarget_) controlTarget_->FramePresented(observationFrame);
         cameraFramePresented_ = true;
+        ++cameraFramesPresented_;
         RecordStartupFirstPresent();
         if (pendingSceneCaptureClock100ns_) {
             pipelineOrchestrator_->RecordCaptureToPresentSample(
@@ -1930,6 +2033,7 @@ bool OkuFlowApp::StartCameraCapture(size_t index,
             std::scoped_lock lock(ingress->mutex);
             if (!ingress->accepting) return;
             ++ingress->received;
+            ++ingress->delivered;
             if (ingress->profileReceived++ == 0)
                 ingress->firstArrivalMs = GetTickCount64();
             else {
@@ -3207,7 +3311,7 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
         else ultraClearText_->OnPresentationSucceeded();
     }
     ApplyUltraClearTextDisplayColors(0); // Raw CPU camera / pre-graded CPU media.
-    if (!selectedMedia) cameraFramePresented_ = true;
+    if (!selectedMedia) { cameraFramePresented_ = true; ++cameraFramesPresented_; }
     if (!selectedMedia) {
         lastAnnotationPresentation_ = UltraClearTextContext(false, transform,
             mapping.targetWidth, mapping.targetHeight);

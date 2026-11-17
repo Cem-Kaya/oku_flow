@@ -3761,5 +3761,73 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Formula could not be read. The original image is unchanged.</source>
         <translation>সূত্র পড়া যায়নি। মূল ছবিটি অপরিবর্তিত আছে।</translation>
     </message>
+    <message>
+        <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
+        <translation>ফোনটি USB দিয়ে সংযুক্ত করুন, তারপর ফোনে ফাইল ট্রান্সফার বেছে নিন এবং USB ডিবাগিং চালু করুন।</translation>
+    </message>
+    <message>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>ফোন আনলক করুন এবং USB ডিবাগিংয়ের প্রশ্নে অনুমতি দিন-এ ট্যাপ করুন। কোনো প্রশ্ন না দেখালে USB কেবলটি খুলে আবার লাগান।</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>ফোনে OkuFlow ক্যামেরা সাড়া দিচ্ছে না। ফোনে এটি বন্ধ করে আবার খুলুন।</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>ফোনের USB কেবলটি খুলে আবার লাগান।</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow তার USB ফোন সংযোগ শুরু করতে পারছে না। OkuFlow আবার ইনস্টল করুন, অথবা আপনার অ্যান্টিভাইরাস প্রোগ্রামে এটিকে অনুমতি দিন।</translation>
+    </message>
+    <message>
+        <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>
+        <translation>ফোনের ক্যামেরা চালু করা যায়নি। ফোনে অন্য ক্যামেরা অ্যাপগুলো বন্ধ করুন, তারপর আবার OkuFlow ক্যামেরা খুলুন।</translation>
+    </message>
+    <message>
+        <source>A different phone is connected. Connect the phone you chose in OkuFlow, or choose the connected phone under Settings, Camera.</source>
+        <translation>অন্য একটি ফোন সংযুক্ত আছে। OkuFlow-এ আপনি যে ফোনটি বেছে নিয়েছেন সেটি সংযুক্ত করুন, অথবা সেটিংস-এর ক্যামেরা বিভাগে সংযুক্ত ফোনটি বেছে নিন।</translation>
+    </message>
+    <message>
+        <source>Unlock your phone.</source>
+        <translation>ফোন আনলক করুন।</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone.</source>
+        <translation>ফোনে OkuFlow ক্যামেরা খুলুন।</translation>
+    </message>
+    <message>
+        <source>Install OkuFlow Camera on the phone.</source>
+        <translation>ফোনে OkuFlow ক্যামেরা ইনস্টল করুন।</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera and tap Resume streaming.</source>
+        <translation>ফোনে OkuFlow ক্যামেরা খুলুন এবং স্ট্রিমিং পুনরায় শুরু করুন-এ ট্যাপ করুন।</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming.</source>
+        <translation>ফোনে OkuFlow ক্যামেরা খুলুন। স্ট্রিমিং বিরতিতে আছে দেখালে স্ট্রিমিং পুনরায় শুরু করুন-এ ট্যাপ করুন।</translation>
+    </message>
+    <message>
+        <source>Another computer or program is using the phone camera.</source>
+        <translation>অন্য একটি কম্পিউটার বা প্রোগ্রাম ফোনের ক্যামেরা ব্যবহার করছে।</translation>
+    </message>
+    <message>
+        <source>Camera access is blocked on the phone.</source>
+        <translation>ফোনে ক্যামেরার অ্যাক্সেস ব্লক করা আছে।</translation>
+    </message>
+    <message>
+        <source>The phone is too hot. Let it cool down.</source>
+        <translation>ফোনটি খুব গরম হয়ে গেছে। এটিকে ঠান্ডা হতে দিন।</translation>
+    </message>
+    <message>
+        <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
+        <translation>OkuFlow-এর অন্য একটি উইন্ডো ফোনটি ব্যবহার করছে। এখানে ফোনটি ব্যবহার করতে সেটি বন্ধ করুন।</translation>
+    </message>
+    <message>
+        <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
+        <translation>অন্য একটি প্রোগ্রাম ফোনের USB সংযোগ ব্যবহার করছে। সেটি বন্ধ করুন বা কম্পিউটার রিস্টার্ট করুন।</translation>
+    </message>
 </context>
 </TS>

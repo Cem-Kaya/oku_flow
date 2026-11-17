@@ -3761,5 +3761,73 @@ Melden Sie sich auf der erweiterten Registerkarte Assistent über ChatGPT verbin
         <source>Formula could not be read. The original image is unchanged.</source>
         <translation>Die Formel konnte nicht gelesen werden. Das Originalbild bleibt unverändert.</translation>
     </message>
+    <message>
+        <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
+        <translation>Verbinden Sie das Telefon per USB, wählen Sie dann auf dem Telefon „Dateiübertragung“ und schalten Sie USB-Debugging ein.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>Entsperren Sie Ihr Telefon und tippen Sie bei der Frage zum USB-Debugging auf „Zulassen“. Wenn keine Frage erscheint, ziehen Sie das USB-Kabel ab und stecken Sie es wieder ein.</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>OkuFlow Kamera reagiert auf dem Telefon nicht. Schließen Sie die App auf dem Telefon und öffnen Sie sie erneut.</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>Ziehen Sie das USB-Kabel des Telefons ab und stecken Sie es wieder ein.</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow kann die USB-Verbindung zum Telefon nicht starten. Installieren Sie OkuFlow neu oder lassen Sie es in Ihrem Virenschutzprogramm zu.</translation>
+    </message>
+    <message>
+        <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>
+        <translation>Die Kamera des Telefons konnte nicht starten. Schließen Sie andere Kamera-Apps auf dem Telefon und öffnen Sie dann OkuFlow Kamera erneut.</translation>
+    </message>
+    <message>
+        <source>A different phone is connected. Connect the phone you chose in OkuFlow, or choose the connected phone under Settings, Camera.</source>
+        <translation>Ein anderes Telefon ist verbunden. Verbinden Sie das in OkuFlow gewählte Telefon oder wählen Sie das verbundene Telefon unter Einstellungen, Kamera aus.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone.</source>
+        <translation>Entsperren Sie Ihr Telefon.</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone.</source>
+        <translation>Öffnen Sie OkuFlow Kamera auf dem Telefon.</translation>
+    </message>
+    <message>
+        <source>Install OkuFlow Camera on the phone.</source>
+        <translation>Installieren Sie OkuFlow Kamera auf dem Telefon.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera and tap Resume streaming.</source>
+        <translation>Öffnen Sie OkuFlow Kamera auf dem Telefon und tippen Sie auf „Übertragung fortsetzen“.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming.</source>
+        <translation>Öffnen Sie OkuFlow Kamera auf dem Telefon. Wenn die Übertragung als pausiert angezeigt wird, tippen Sie auf „Übertragung fortsetzen“.</translation>
+    </message>
+    <message>
+        <source>Another computer or program is using the phone camera.</source>
+        <translation>Ein anderer Computer oder ein anderes Programm verwendet die Telefonkamera.</translation>
+    </message>
+    <message>
+        <source>Camera access is blocked on the phone.</source>
+        <translation>Der Kamerazugriff ist auf dem Telefon blockiert.</translation>
+    </message>
+    <message>
+        <source>The phone is too hot. Let it cool down.</source>
+        <translation>Das Telefon ist zu heiß. Lassen Sie es abkühlen.</translation>
+    </message>
+    <message>
+        <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
+        <translation>Ein anderes OkuFlow-Fenster verwendet das Telefon. Schließen Sie es, um das Telefon hier zu verwenden.</translation>
+    </message>
+    <message>
+        <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
+        <translation>Ein anderes Programm verwendet die USB-Verbindung des Telefons. Schließen Sie es oder starten Sie den Computer neu.</translation>
+    </message>
 </context>
 </TS>

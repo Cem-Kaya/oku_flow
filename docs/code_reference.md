@@ -1763,16 +1763,43 @@ so metadata generation cannot silently accept an incomplete copy.
   phone readiness before replacing a working camera. With no working source,
   a saved attached phone can be retried before its listener starts.
 - `OkuFlowApp.PollPhoneCameraDiscovery` consumes an asynchronous USB snapshot
-  every five seconds, reconciles by stable identity, and rebuilds the picker
+  at the cadence the link doctor names (`PhoneLinkDecision::nextPollMs`: at
+  once after a link event, about one second apart at first, backing off to
+  at most ten seconds; five seconds when no verdict came back), reconciles by
+  stable identity, and rebuilds the picker
   only when visible names/identities change. A running phone is never probed;
-  a starting phone is excluded inside the transport. Recording permits only
+  a starting phone is excluded inside the transport. No new discovery is
+  dispatched while a camera start is in flight, also one queued behind the
+  previous camera's stop while that stop runs (`pendingCameraStart_` with
+  `cameraStopPending_`): its result could not start anything and its link
+  ladder could act on the phone about to start. A start that only waits for
+  a recording to end (a manual pick while recording) does not hold discovery
+  back. Recording permits only
   recovery of the same source, without switching to a fallback.
 - `StartCameraCapture` always dispatches phone startup off the UI thread.
   `StartFallbackCamera` restores a temporary webcam after phone startup/loss;
   it does not overwrite the phone preference. Phone errors are nonmodal.
-  `PhoneRetryPolicy.Observe/Failed/Succeeded/CanAttempt` tracks per-transport
-  readiness and 5/10/20/60-second failure backoff (at least 30 seconds for busy
-  or hot errors). Replug, recovery, changed problem or server epoch resets that backoff.
+  `PhoneRetryPolicy.Observe/Failed/Succeeded/CanAttempt/Reset` tracks per-transport
+  readiness and 1/2/3/5/10-second failure backoff (at least 5 seconds for busy
+  errors). Replug, recovery, changed problem, server epoch or a link event resets it.
+- `OkuFlowApp::NotePhoneEvent`, `OnPhoneUsbRemoval`, `OnSystemSuspend`,
+  `OnSystemResume`, `OnWindowActivationChanged`, `OnPhoneDiscoveryPulse` turn
+  window messages into `PhoneLinkEvent`s (reset budgets, immediate discovery),
+  check a resumed phone session for a frame delivered by the capture within 3 s
+  (`CameraIngress::delivered`, never reset; presentation is not measured: a
+  media view or a minimized or covered window presents nothing) and detect
+  wall-clock jumps. `RefreshPhoneIntentGeneration` advances
+  `phoneIntentGeneration_` only when the phone intent key (temporary source,
+  phone intent, preferred phone, automatic selection, file source) changes,
+  computed after the change and before a pick's event; discovery carries it in
+  `PhoneLinkRequest::intentGeneration`/`liveIntentGeneration`. `PhoneLinkSentence` maps the last `PhoneLinkDecision` to the
+  placeholder/status sentence. `MainWindow` emits `phoneUsbRemoved`,
+  `systemSuspending`, `systemResumed` (resume broadcasts and console display on)
+  and `windowActivationChanged`.
+- `phone_link_text.hpp` / `phone_link_text.cpp`: `PhoneLinkPlaceholderText`
+  returns one catalog sentence per `PhoneLinkDiagnosis` (empty for Connected
+  and NotWanted); recovering states read "Restoring USB connection…" until the
+  ladder waits for the user.
 - `PersistentSettings.cameraSelectionExplicit` distinguishes a user pick from
   an implicit first-run webcam. `OnCameraSelectionChanged` sets it and saves
   the stable link. `settings::LoadDetailed` infers an explicit preference for
@@ -1848,13 +1875,140 @@ so metadata generation cannot silently accept an incomplete copy.
   post-connect revalidation; a failed bounded exit wait can use only the exact
   held process handle. `LegacyAdbRecoveryResult` distinguishes recovered,
   unmanaged, busy, identity-changed, canceled and failed, with structured detail
-  and observation diagnostics. Unknown/SDK/overridden servers are never stopped.
+  and observation diagnostics. Overridden servers are never stopped.
+  `ReadTcpListenerRows`/`AdbListenerRows` read both listener tables and pick
+  the rows standing for the listener reached on `127.0.0.1:port` (IPv4
+  loopback, else any-address `0.0.0.0`/`::`); every listener lookup uses them;
+  `SetTcpListenerRowsTransformForTest` is the test seam.
+  `TryStopDefaultAdbServer(DefaultAdbStopRequest)` implements the owner's
+  2026-11-17 default-port rule (`stillWanted` is asked before `host:kill`,
+  again right before its first byte, and before the termination;
+  `afterHostKillConnectForTest` is the seam between connect and write;
+  `LegacyAdbRecoveryRequest::stillWanted` is asked with every cancellation
+  check of the legacy reclamation): exact listener PID, same PID/creation
+  as the caller's pre-listing identity, image `adb.exe`, not this process, optional
+  raw `host:kill`, revalidation and `TerminateProcess` on the held handle;
+  `DefaultAdbStopResult` reports Stopped, NoListener, SelfListener, NotAdb,
+  IdentityChanged, AccessDenied, HostKillIgnored (`terminateIfAlive=false`:
+  asked only), Canceled or Failed. `FindOkuFlowSiblings`
+  lists other same-user/session OkuFlow processes (same image, visible window)
+  for observation only. `OkuFlowInstanceRegistration::Register/SignalExiting`
+  creates and sets the named instance events of a real instance
+  (`OkuFlowInstanceObjectName`, `OkuFlowInstallationTag`);
+  `ObserveOkuFlowSiblings` (optional `canceled`) reports registration, exit
+  signal, visible window and whether the windows of the registered UI thread
+  (`OkuFlowInstanceUiThreadName`, `RecordOkuFlowUiThread`; every top-level
+  window without that record) answer `WM_NULL` (`uiThreadHasNoWindow`: the
+  recorded thread owns no window, classified Pending)
+  (100 ms slices; not asked when a window is visible); `ClassifyOkuFlowSibling`
+  (pure, with `OkuFlowSiblingTrack`/`OkuFlowSiblingPolicy`, windowless proof
+  20 s) proves a leftover; `StopLeftoverOkuFlowInstance` terminates the exact
+  proven leftover through a held handle after re-checking it has no visible
+  window, stops nothing when the process cannot be opened, and falls back to
+  `StopLeftoverAdbChild` (proven bundled adb child only, with the parent held
+  open, alive and of the same creation). `LeftoverInstanceStopRequest` carries
+  `canceled` and the test seams `visibleWindowForTest` and
+  `refuseTerminationForTest`. The instance raises its exit signal in
+  `~OkuFlowApp` after the critical teardown.
+- `phone_link_doctor.hpp` / `phone_link_doctor.cpp`: `PhoneLinkObservation`,
+  `DiagnosePhoneLink`, `PhoneLinkWaitsForUser`, `PhoneLinkDoctor::OnEvent/Decide`
+  and `PhoneLinkPolicy` form the pure, clock-free decision unit (27 diagnoses,
+  10 actions, event-reset budgets, per-episode caps including `handOverCap`,
+  `foreignReconnects`, `unknownInterfaceBlindMs`, `userEndpointUnresponsiveMs`,
+  `companionFailedGraceMs`, and the event-storm limits `resumeCoalesceMs`,
+  `flapRemovals`, `flapWindowMs`, `flapQuietMs`; `OnEvent` returns false for a
+  coalesced resume). `NoteExitRequestDropped`/`NoteTerminationDropped` give
+  back an ask or termination dropped for a changed source, uncounted.
+  `ExecuteLinkAction` keeps a live-session veto from the termination helper's
+  authority callback and passes it to `NoteTerminationAborted`, including
+  when the session ends before the helper returns. The ask and both
+  termination paths check their pre-listing listener identity after listing,
+  after a stall re-check and before the stop helper.
+  `OwnedAdbServer::UnansweredStarts` counts starts that never answered (one
+  per start grace alive, one at death), reset when the child answers;
+  `UnansweredStartsAtRetirement` adds a death not counted yet and a child
+  dropped alive whose readiness wait ran to its deadline (or that a probe
+  found silent past it; `readinessMissed_`), never by age alone, for the
+  transport to keep with its launch failures when it drops the manager (not
+  for a release for a webcam, which adds nothing).
+  `OwnedAdbServer::EnsureRunning`/`Restart` take an optional `stillWanted`,
+  asked with every cancellation check while the manager's lock is held.
+  `NoteRestartDeferred` gives back a restart a live session deferred. A cycle
+  whose `PhoneLinkRequest` is stale never reaches `Decide` (the transport's
+  `DropStaleCycle`: last diagnosis, next cycle at once). `PhoneAdbTestHooks`
+  seams of iteration 9: `linkStageForTest` ("locked", "default-probed",
+  "decide"), `afterHostKillConnectForTest`, `legacyReclaimForTest`,
+  `phoneSessionLiveForTest`; after round 10 `afterReconnectConnectForTest`
+  (between a transport reconnect's connect and its write, where
+  `AdbReconnectReply` asks the request's authority) and the read-only
+  `ReadPhoneSessionStateForTest` (including the stored frame timestamp).
+  `sessionConnectBudgetForTest` lets a silent session fixture stay registered
+  through the stop decision. `PhoneSessionBlocksStop` (pure): only a
+  session that is registered and delivered a frame within
+  `kLivePhoneSessionFrameMs` forbids an ask or a termination; the frame time
+  is written where a frame is decoded and cleared when the last session ends
+  (`~OccupiedPhone`).
+  `NoteDefaultStopRefused`, `NoteDefaultStopFailed` (second one refuses; the
+  overloads taking `PhoneLinkDecision::episode` drop an outcome that arrives
+  after a newer event), `ClearDefaultStopRefused` and
+  `NoteDefaultListenerChanged` carry the transport's stop outcomes and listener
+  changes. `ReserveLaunch`/`RenewLaunches` are the one per-event companion
+  launch budget shared by the ladder and camera starts; `BlindGracePassed`
+  gates a leftover stop; `HandOverAllowed`/`NoteHandOver` count the
+  transport's starts beside a hung default and every executed hand-back
+  (the doctor's `HandBackToDefault` decision itself does not count; the
+  transport passes the episode it started in, and a count noted after a
+  newer event is dropped);
+  `NoteTerminationAborted(episode, takeover)` gives back a termination of
+  the current episode that the pre-stop listing aborted and counts it toward
+  `PhoneLinkPolicy::abortedStopCap` in the count of the rung that decided it
+  (`takeover` is the decision's `hostKillAlreadySent`: only the takeover
+  branch terminates after an ask), at which a borrowed
+  `ServerUnresponsive` (hung branch) or a takeover termination or ask
+  (takeover branch) ends in `OtherProgramHoldsPhone` with `WaitForUser`;
+  the two counts are separate, so the end of one never ends the other;
+  `NoteExitRequestNotSent`
+  does the same for an `AskDefaultServerToExit` that sent no `host:kill`
+  (gives the ask back, forgets the ask time so no termination follows, and
+  counts toward the takeover's count); `NoteExitRequestNotNeeded` gives back
+  an ask that found the default already gone, without counting the first one
+  of an episode (nothing was kept) and counting every further one, so a
+  listener the lookup cannot identify ends in the sentence; `Episode` names the
+  current episode. `PhoneLinkDiagnosisName`/`ActionName`/`EventName` give trace
+  names. A borrowed `ServerUnresponsive` with `defaultHasOtherDevices` (its
+  listing answered and showed another device) is named, never stopped; the
+  transport lists that listener again every `userWaitPollMs` while the
+  verdict stands and drops it when another device is no longer listed.
+  `PhoneLinkObservation::defaultPhoneStalled` marks a "device" listing
+  on the default whose adbd timed out there in this episode (the transport
+  remembers it per listener): it is never handed back to. Before
+  `AskDefaultServerToExit` or `TerminateDefaultServer` is executed on that
+  memory alone, one bounded shell echo through the default listener
+  re-checks adbd; an answer clears the memory and keeps the server.
+- `OwnedAdbServer::Restart` restarts a responsive but blind owned child (live
+  sessions win); `ResetBudgets` (lock-free, applied by the next
+  `EnsureRunning`/`Restart`) clears the restart cooldown, which starts at
+  `OwnedAdbServerPolicy::restartCooldown` (5 s) and doubles to
+  `maxRestartCooldown` (30 s). `startGrace` (30 s) protects a child that has
+  never answered; `confirmationSpacing` (1 s) spaces the hang probes.
 - `PhoneAdbTestHooks` / `SetPhoneAdbTestHooks` isolate fake-socket tests on a
   private random port and disable real bootstrap; switching hooks stops any
-  previously owned child and resets test budgets. `OccupiedPhone`, `MayLaunch`
-  and `AllowAppLaunch` prevent overlapping probes and repeated automatic
-  activity launches for one USB transport. A manual camera pick renews the
-  launch allowance. `ControlHello` accepts a token-free `probe:true` ACK,
+  previously owned child and resets test budgets. `siblingImage`,
+  `siblingTag`, `siblingAdbImage`, the sibling grace fields and
+  `refuseSiblingTermination` run the production sibling scan and leftover stop
+  against a private fixture image; `siblingVisibleWindowForTest` reports a
+  window at the last check before termination (outcome IdentityChanged);
+  `afterPrivateServerRetiredForTest` runs after a hand-back stopped the private
+  server and before the hand-over is counted; `beforeShadowStartForTest` runs
+  when a `StartShadowServer` action begins, before its start request is set.
+  That request (`AdbRuntime::shadowRequested`) is consumed by the start beside
+  the default once it passes the executable and throttle checks, kept while
+  those checks hold it back, and dropped by an event, by a phone-use start
+  that is not beside a default any more (the default went away) and by a
+  `ReleaseForWebcam` call. `OccupiedPhone` prevents overlapping
+  probes; `MayLaunch` takes a camera start's single wake + launch from the
+  doctor's per-event budget (`PhoneLinkDoctor::ReserveLaunch`), and
+  `AllowAppLaunch` (a manual camera pick) renews it. `ControlHello` accepts a token-free `probe:true` ACK,
   supports older tokened ACKs and reads coded ERROR packets. Real hello and
   video binding are retried together within a bounded connection window.
   `ownedServerExecutable` / `ownedServerArguments` opt into the private fake
@@ -1866,7 +2020,13 @@ so metadata generation cannot silently accept an incomplete copy.
   `PhoneCameraTransport.RecoverStalledUsbTransport` requires a responsive adb
   version query, the same authorized USB serial/transport before and after a
   pair of timed-out independent shell echoes, plus a fresh non-claiming companion
-  timeout, then sends `host-transport-id:ID:reconnect`. The echo checks require
+  timeout, then sends `host-transport-id:ID:reconnect`. `ReconnectServer` carries
+  the listing port, ownership and default listener identity into
+  `AdbReconnectReply`. `AdbRequest` uses the guarded socket write for the
+  final admission check. The offline ladder also re-lists on that port and
+  requires a matching eligible USB serial and ID. The ID-less fallback
+  requires continued owned-server status. `CompanionProblemTraceToken`
+  allows only known codes in diagnosis and session-end traces. The echo checks require
   all response bytes, not just one early byte. Post-ack listing must observe the
   stale ID disappearing or changing within two seconds before success.
   `AdbRuntime.nextUsbRecovery` limits requests to once per phone/server per
@@ -4295,6 +4455,10 @@ Namespace `okuflow`
   - `void SetLiveTextCoalesced(QWidget* widget, const QString& text,
     LivePoliteness politeness, const QString& rolePrefix = {},
     int delayMs = 400)`
+  - `void AnnounceLiveText(QWidget* widget, const QString& text,
+    LivePoliteness politeness)` announces a translated passing message
+    without changing the widget's text (a notification while the phone
+    sentence owns the status line), with the same duplicate suppression.
 
 ### `include/okuflow/ui/render_widget.hpp`
 `okuflow::RenderWidget`
@@ -4998,7 +5162,19 @@ translated app strings; it is an HTML draft, not a native-device screenshot.
   bounded stop coordinator; a hung decoder retains its session. Frame-rate
   atomics follow decoded generation metadata.
 - `phone_camera.hpp` / `phone_camera.cpp`: `ParseAdbUsbDevices` reads bounded
-  public protobuf fields without a runtime dependency. `PhoneCameraTransport`
+  public protobuf fields without a runtime dependency; `ParseAdbDeviceEntries` /
+  `ParseAdbDevicesLongText` keep every transport with its raw `PhoneAdbState`.
+  `ParsePhoneShellFacts` parses the read-only shell query (absence of the app
+  or its process only after the whole sentinel line `kPhoneShellFactsEnd`,
+  `OKUFLOW_FACTS_END`, which the reader also waits for), `QueryAndroidAdbInterface`
+  checks SetupAPI presence of the standard ADB interface GUID (Absent also for
+  a phone without it; Unknown only when SetupAPI fails), `NotePhoneLinkEvent` resets budgets (UI-thread
+  safe: short locks only), and
+  `SetPhoneLinkTraceFile` / `TracePhoneLink` / `FlushPhoneLinkTrace` /
+  `PhoneSerialTag` write the always-on trace through its own writer thread.
+  `PhoneLinkRequest::targetSerial` and `phoneWantedIfAttached` carry the chosen
+  phone and the first-run automatic intent. `Enumerate(..., PhoneLinkRequest*, PhoneLinkReport*)` collects
+  one observation, asks the doctor and runs the chosen rung. `PhoneCameraTransport`
   `Enumerate` uses USB connection type, with explicit-USB legacy fallback, and
   optionally lists camera IDs. `Start` waits for first decoded output; `Run`
   revalidates USB transport ID, launches the installed activity, binds channels,

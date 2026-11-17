@@ -45,6 +45,24 @@ if(OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE)
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"
         REQUIRED_FILES "${PROJECT_SOURCE_DIR}/tests/native_app_control_fixture.cpp;${PROJECT_SOURCE_DIR}/src/ui/main_window.cpp;${PROJECT_SOURCE_DIR}/src/app/app_controls.cpp")
+    # The phone link's sentences and wiring (status line, events, discovery
+    # pacing, resume check, intent generation): offscreen, no adb, no phone.
+    # The other phone slots run in native_app_file_sources_offscreen.
+    add_test(NAME native_app_phone_link_offscreen COMMAND native_app_control_fixture
+        phoneSentenceIsShownAndSpokenForEveryDiagnosis
+        displayOnAndActivationAfterIdleReachTheApplication
+        discoveryKeepsRunningWhileAPickWaitsForARecording
+        automaticDiscoveryWaitsForAReadyPhone
+        differentPhoneSentenceIsNotShownBeforeTheSwitch
+        resumeKeepsAPhoneThatDeliversWithoutPresenting
+        aSourceChangeRevokesTheRunningLadder
+        aPickOfTheChosenPhoneRevokesNothing
+        aHiddenLivePhoneSessionIsConnectedForTheDoctor)
+    set_tests_properties(native_app_phone_link_offscreen PROPERTIES TIMEOUT 90
+        LABELS "headless;native-control-opt-in" RESOURCE_LOCK okuflow_process_identity
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"
+        REQUIRED_FILES "${PROJECT_SOURCE_DIR}/tests/native_app_control_fixture.cpp;${PROJECT_SOURCE_DIR}/src/app/app_controls.cpp;${PROJECT_SOURCE_DIR}/src/app/app_pipeline_runtime.cpp;${PROJECT_SOURCE_DIR}/src/app/phone_link_text.cpp")
     add_test(NAME native_app_file_sources_offscreen COMMAND native_app_control_fixture
         documentPageInkSurvivesNavigationAndUpdatesOneCopy
         documentPixelsReplacePreviousSourceInHiddenPresenter
@@ -52,6 +70,7 @@ if(OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE)
         pendingPhoneDoesNotLockWebcamSelection
         automaticPhoneChoiceWorksBeforeUsbDiscovery
         usbReplugSelectsPhoneAfterManualWebcamButRepeatedDiscoveryDoesNot
+        resumeAndDeviceRemovalReachTheApplication
         documentPaneFitsSettingsAfterTabSwitch
         pdfTextAndPicturesShareTheFilePickerWithoutVideoCommands
         phoneRecoverySurvivesFileReviewAndConnectionLoss)

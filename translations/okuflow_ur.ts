@@ -3761,5 +3761,73 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Formula could not be read. The original image is unchanged.</source>
         <translation>فارمولا پڑھا نہیں جا سکا۔ اصل تصویر تبدیل نہیں ہوئی۔</translation>
     </message>
+    <message>
+        <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
+        <translation>فون کو USB سے جوڑیں، پھر فون پر فائل کی منتقلی منتخب کریں اور USB ڈیبگنگ آن کریں۔</translation>
+    </message>
+    <message>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>اپنا فون ان لاک کریں اور USB ڈیبگنگ والے سوال میں اجازت دیں پر ٹیپ کریں۔ اگر کوئی سوال ظاہر نہ ہو تو USB کیبل نکالیں اور دوبارہ لگائیں۔</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>فون پر OkuFlow کیمرہ جواب نہیں دے رہا۔ اسے فون پر بند کریں اور دوبارہ کھولیں۔</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>فون کی USB کیبل نکالیں اور دوبارہ لگائیں۔</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow اپنا USB فون کنکشن شروع نہیں کر سکتا۔ OkuFlow دوبارہ انسٹال کریں، یا اپنے اینٹی وائرس پروگرام میں اسے اجازت دیں۔</translation>
+    </message>
+    <message>
+        <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>
+        <translation>فون کا کیمرہ شروع نہیں ہو سکا۔ فون پر دوسری کیمرہ ایپس بند کریں، پھر OkuFlow کیمرہ دوبارہ کھولیں۔</translation>
+    </message>
+    <message>
+        <source>A different phone is connected. Connect the phone you chose in OkuFlow, or choose the connected phone under Settings, Camera.</source>
+        <translation>کوئی دوسرا فون منسلک ہے۔ OkuFlow میں منتخب کیا گیا فون منسلک کریں، یا منسلک فون کو ترتیبات، کیمرہ کے تحت منتخب کریں۔</translation>
+    </message>
+    <message>
+        <source>Unlock your phone.</source>
+        <translation>اپنا فون ان لاک کریں۔</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone.</source>
+        <translation>فون پر OkuFlow کیمرہ کھولیں۔</translation>
+    </message>
+    <message>
+        <source>Install OkuFlow Camera on the phone.</source>
+        <translation>فون پر OkuFlow کیمرہ انسٹال کریں۔</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera and tap Resume streaming.</source>
+        <translation>فون پر OkuFlow کیمرہ کھولیں اور سلسلہ بندی دوبارہ شروع کریں پر ٹیپ کریں۔</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming.</source>
+        <translation>فون پر OkuFlow کیمرہ کھولیں۔ اگر یہ دکھائے کہ سلسلہ بندی رکی ہوئی ہے تو سلسلہ بندی دوبارہ شروع کریں پر ٹیپ کریں۔</translation>
+    </message>
+    <message>
+        <source>Another computer or program is using the phone camera.</source>
+        <translation>کوئی دوسرا کمپیوٹر یا پروگرام فون کا کیمرہ استعمال کر رہا ہے۔</translation>
+    </message>
+    <message>
+        <source>Camera access is blocked on the phone.</source>
+        <translation>فون پر کیمرے تک رسائی مسدود ہے۔</translation>
+    </message>
+    <message>
+        <source>The phone is too hot. Let it cool down.</source>
+        <translation>فون بہت گرم ہے۔ اسے ٹھنڈا ہونے دیں۔</translation>
+    </message>
+    <message>
+        <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
+        <translation>OkuFlow کی کوئی دوسری ونڈو فون استعمال کر رہی ہے۔ فون کو یہاں استعمال کرنے کے لیے اسے بند کریں۔</translation>
+    </message>
+    <message>
+        <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
+        <translation>کوئی دوسرا پروگرام فون کا USB کنکشن استعمال کر رہا ہے۔ اسے بند کریں یا کمپیوٹر دوبارہ شروع کریں۔</translation>
+    </message>
 </context>
 </TS>

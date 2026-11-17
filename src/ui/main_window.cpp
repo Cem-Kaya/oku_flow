@@ -2519,6 +2519,7 @@ MainWindow::MainWindow()
 MainWindow::~MainWindow()
 {
     if (phoneDeviceNotification_) UnregisterDeviceNotification(phoneDeviceNotification_);
+    if (displayPowerNotification_) UnregisterPowerSettingNotification(displayPowerNotification_);
     if (qApp) {
         qApp->removeNativeEventFilter(this);
         qApp->removeEventFilter(this);
@@ -4540,6 +4541,7 @@ void MainWindow::keyReleaseEvent(QKeyEvent* event)
 void MainWindow::changeEvent(QEvent* event)
 {
     QMainWindow::changeEvent(event);
+    if (event && event->type() == QEvent::ActivationChange) emit windowActivationChanged(isActiveWindow());
     if (event && event->type() == QEvent::LanguageChange) {
         // The language manager switches the default locale with the
         // translator, so decimal marks and percent placement change too.
@@ -4988,6 +4990,12 @@ void MainWindow::showEvent(QShowEvent* event)
     const auto handle = effectiveWinId();
     if (phoneDeviceNotificationWindow_ == handle && phoneDeviceNotification_) return;
     if (phoneDeviceNotification_) UnregisterDeviceNotification(phoneDeviceNotification_);
+    if (displayPowerNotification_) UnregisterPowerSettingNotification(displayPowerNotification_);
+    // Modern standby laptops may skip suspend/resume broadcasts; the console
+    // display turning on again is the reliable "back from sleep" signal.
+    static const GUID kConsoleDisplayState{0x6fe69556, 0x704a, 0x47a0, {0x8f, 0x24, 0xc2, 0x8d, 0x93, 0x6f, 0xda, 0x47}};
+    displayPowerNotification_ = RegisterPowerSettingNotification(reinterpret_cast<HWND>(handle),
+        &kConsoleDisplayState, DEVICE_NOTIFY_WINDOW_HANDLE);
     DEV_BROADCAST_DEVICEINTERFACE_W filter{};
     filter.dbcc_size = sizeof(filter);
     filter.dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE;
@@ -5002,7 +5010,24 @@ bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr
 {
     const auto* nativeMessage = static_cast<const MSG*>(message);
     if (nativeMessage && nativeMessage->hwnd == reinterpret_cast<HWND>(effectiveWinId()) &&
-        nativeMessage->message == WM_DEVICECHANGE && nativeMessage->wParam == DBT_DEVICEARRIVAL &&
+        nativeMessage->message == WM_POWERBROADCAST) {
+        if (nativeMessage->wParam == PBT_APMSUSPEND) emit systemSuspending();
+        else if (nativeMessage->wParam == PBT_APMRESUMEAUTOMATIC || nativeMessage->wParam == PBT_APMRESUMESUSPEND)
+            emit systemResumed();
+        else if (nativeMessage->wParam == PBT_POWERSETTINGCHANGE && nativeMessage->lParam) {
+            const auto* setting = reinterpret_cast<const POWERBROADCAST_SETTING*>(nativeMessage->lParam);
+            static const GUID kConsoleDisplayState{0x6fe69556, 0x704a, 0x47a0, {0x8f, 0x24, 0xc2, 0x8d, 0x93, 0x6f, 0xda, 0x47}};
+            if (IsEqualGUID(setting->PowerSetting, kConsoleDisplayState) && setting->DataLength >= sizeof(DWORD)) {
+                DWORD state = 0;
+                std::memcpy(&state, setting->Data, sizeof(state));
+                if (state == 0) displayWasOff_ = true;
+                else if (state == 1 && displayWasOff_) { displayWasOff_ = false; emit systemResumed(); }
+            }
+        }
+    }
+    if (nativeMessage && nativeMessage->hwnd == reinterpret_cast<HWND>(effectiveWinId()) &&
+        nativeMessage->message == WM_DEVICECHANGE &&
+        (nativeMessage->wParam == DBT_DEVICEARRIVAL || nativeMessage->wParam == DBT_DEVICEREMOVECOMPLETE) &&
         nativeMessage->lParam) {
         const auto* header = reinterpret_cast<const DEV_BROADCAST_HDR*>(nativeMessage->lParam);
         constexpr auto offset = offsetof(DEV_BROADCAST_DEVICEINTERFACE_W,dbcc_name);
@@ -5014,8 +5039,10 @@ bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr
             if (IsEqualGUID(device->dbcc_classguid,kPhoneUsbInterfaceGuid) &&
                 end != device->dbcc_name+count &&
                 QString::fromWCharArray(device->dbcc_name,int(end-device->dbcc_name))
-                    .startsWith(QStringLiteral("\\\\?\\usb#"),Qt::CaseInsensitive))
-                emit phoneUsbArrived();
+                    .startsWith(QStringLiteral("\\\\?\\usb#"),Qt::CaseInsensitive)) {
+                if (nativeMessage->wParam == DBT_DEVICEARRIVAL) emit phoneUsbArrived();
+                else emit phoneUsbRemoved();
+            }
         }
     }
     // Snapshot the actual viewport origin before Windows changes the owner.

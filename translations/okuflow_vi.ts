@@ -3761,5 +3761,73 @@ Chọn Kết nối ChatGPT trong tab Trợ lý của chế độ Nâng cao để
         <source>Formula could not be read. The original image is unchanged.</source>
         <translation>Không thể đọc công thức. Ảnh gốc không thay đổi.</translation>
     </message>
+    <message>
+        <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
+        <translation>Kết nối điện thoại qua USB, sau đó chọn Truyền tệp trên điện thoại và bật gỡ lỗi USB.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>Mở khóa điện thoại và nhấn Cho phép trong câu hỏi về gỡ lỗi USB. Nếu không thấy câu hỏi, hãy rút cáp USB rồi cắm lại.</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>OkuFlow Máy ảnh không phản hồi trên điện thoại. Hãy đóng ứng dụng trên điện thoại rồi mở lại.</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>Rút cáp USB của điện thoại rồi cắm lại.</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow không thể bắt đầu kết nối USB với điện thoại. Hãy cài đặt lại OkuFlow hoặc cho phép ứng dụng trong chương trình diệt virus.</translation>
+    </message>
+    <message>
+        <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>
+        <translation>Không thể khởi động camera của điện thoại. Hãy đóng các ứng dụng camera khác trên điện thoại, rồi mở lại OkuFlow Máy ảnh.</translation>
+    </message>
+    <message>
+        <source>A different phone is connected. Connect the phone you chose in OkuFlow, or choose the connected phone under Settings, Camera.</source>
+        <translation>Một điện thoại khác đang được kết nối. Hãy kết nối điện thoại bạn đã chọn trong OkuFlow, hoặc chọn điện thoại đang kết nối trong Cài đặt, Máy ảnh.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone.</source>
+        <translation>Mở khóa điện thoại.</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone.</source>
+        <translation>Mở OkuFlow Máy ảnh trên điện thoại.</translation>
+    </message>
+    <message>
+        <source>Install OkuFlow Camera on the phone.</source>
+        <translation>Cài đặt OkuFlow Máy ảnh trên điện thoại.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera and tap Resume streaming.</source>
+        <translation>Trên điện thoại, mở OkuFlow Máy ảnh rồi nhấn Tiếp tục phát trực tuyến.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming.</source>
+        <translation>Trên điện thoại, mở OkuFlow Máy ảnh. Nếu ứng dụng cho biết phát trực tuyến đang tạm dừng, hãy nhấn Tiếp tục phát trực tuyến.</translation>
+    </message>
+    <message>
+        <source>Another computer or program is using the phone camera.</source>
+        <translation>Một máy tính hoặc chương trình khác đang dùng camera của điện thoại.</translation>
+    </message>
+    <message>
+        <source>Camera access is blocked on the phone.</source>
+        <translation>Quyền truy cập camera bị chặn trên điện thoại.</translation>
+    </message>
+    <message>
+        <source>The phone is too hot. Let it cool down.</source>
+        <translation>Điện thoại quá nóng. Hãy để máy nguội bớt.</translation>
+    </message>
+    <message>
+        <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
+        <translation>Một cửa sổ OkuFlow khác đang dùng điện thoại. Hãy đóng cửa sổ đó để dùng điện thoại tại đây.</translation>
+    </message>
+    <message>
+        <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
+        <translation>Một chương trình khác đang dùng kết nối USB của điện thoại. Hãy đóng chương trình đó hoặc khởi động lại máy tính.</translation>
+    </message>
 </context>
 </TS>

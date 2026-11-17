@@ -28,6 +28,9 @@
 #include "okuflow/app/user_data_paths.hpp"
 #include "okuflow/capture/media_capture.hpp"
 #include "okuflow/capture/phone_retry_policy.hpp"
+#include "okuflow/capture/phone_link_doctor.hpp"
+#include "okuflow/capture/adb_legacy_recovery.hpp"
+#include "okuflow/app/phone_link_text.hpp"
 #include "okuflow/capture/audio_capture.hpp"
 #include "okuflow/common/frame_pipeline.hpp"
 #include "okuflow/common/annotation_model.hpp"
@@ -79,6 +82,7 @@ struct ID3D12Resource;
 namespace okuflow {
 namespace agent { class AppControlTarget; class AppControlService; class NativeControlFixture; }
 enum class PhoneDiscoveryStatus;
+struct PhoneLinkReport;
 
 class RenderWidget;
 class JoystickOverlay;
@@ -125,6 +129,10 @@ private slots:
     void OnPresetSelectionChanged(QListWidgetItem* current, QListWidgetItem* previous);
     void OnCameraSelectionChanged(int index);
     void OnPhoneUsbArrival();
+    void OnPhoneUsbRemoval();
+    void OnSystemSuspend();
+    void OnSystemResume();
+    void OnWindowActivationChanged(bool active);
     void OnCameraFormatChanged(int index);
     void OnMicrophoneSelectionChanged(int index);
     void SetRecordingCanvasMode(RecordingCanvasMode mode);
@@ -550,9 +558,39 @@ private:
     std::vector<CameraDescriptor> cameras_;
     std::future<std::pair<PhoneDiscoveryStatus, std::vector<CameraDescriptor>>> phoneDiscovery_;
     PhoneDiscoveryStatus phoneDiscoveryStatus_{};
+    // Link doctor result of the last discovery cycle (the report is written
+    // by the discovery worker; read only after its future is ready).
+    std::shared_ptr<PhoneLinkReport> phoneLinkPending_;
+    PhoneLinkDecision phoneLinkDecision_{};
+    std::string phoneLinkTargetSerial_;
+    bool phoneLinkKnown_{};
+    qint64 phoneDiscoveryIntervalMs_{5000};
+    qint64 lastPulseWallMs_{};
+    qint64 deactivatedAtMs_{};
+    std::uint64_t cameraFramesPresented_{};
+    // Every link event resets the doctor, launch and retry budgets.
+    void NotePhoneEvent(PhoneLinkEvent event);
+    void OnPhoneDiscoveryPulse();
+    PhoneLinkText PhoneLinkSentence() const;
+    // Named registration of this real instance (see OkuFlowInstanceRegistration).
+    std::unique_ptr<OkuFlowInstanceRegistration> instanceRegistration_;
+    // The phone is the wanted camera (saved/temporary phone intent, or the
+    // automatic first-run choice) and the status line must carry its
+    // sentence: no camera, or a fallback webcam showing meanwhile.
+    bool PhoneSentenceOwnsStatusLine() const;
     std::atomic<bool> phoneDiscoveryCanceled_{false};
     QElapsedTimer phoneDiscoveryTimer_;
     quint64 phoneDiscoveryIntentGeneration_{};
+    // Phone-intent generation: advanced on every source or target change (a
+    // webcam, a file, another phone, no phone, an agent's temporary source).
+    // A discovery cycle carries the value it started with; its link ladder
+    // does nothing once the live value differs (PhoneLinkRequest).
+    std::atomic<std::uint64_t> phoneIntentGeneration_{1};
+    QString phoneIntentKey_;
+    // Recomputes what the phone intent is now and advances the generation
+    // only when it changed (also for a deliberate pick: one that leaves the
+    // intent as it was revokes nothing).
+    void RefreshPhoneIntentGeneration();
     QString preferredPhoneCamera_;
     bool automaticPhoneSelectionAllowed_{};
     std::shared_ptr<std::atomic<bool>> pendingCameraStartupCancel_;
@@ -858,6 +896,7 @@ private:
     CudaBufferFormat cudaBufferFormat_{CudaBufferFormat::kRgba8};
     bool rawCudaPathWarned_{false};
     QString transientStatusMessage_;
+    bool transientStatusAnnounced_{false};
     qint64 transientStatusUntilMs_{0};
     LivePoliteness transientStatusPoliteness_{LivePoliteness::kPolite};
     QString lastSuperResLogState_;

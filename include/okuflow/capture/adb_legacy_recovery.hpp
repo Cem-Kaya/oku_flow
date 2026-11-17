@@ -13,6 +13,7 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -30,9 +31,10 @@ namespace okuflow {
 // or nested bundle layout). This is a
 // deliberate adoption of a reviewed OkuFlow-bundled legacy process based on
 // current file/process provenance, not historical kernel proof of which
-// application originally spawned it. Every unknown fails closed and no
-// genuinely foreign process is ever stopped, signalled by name, or tracked
-// by a persisted PID.
+// application originally spawned it. Every unknown fails closed here. Other
+// hung or blind default-port adb servers are handled by the separate
+// TryStopDefaultAdbServer rule below (owner decision of 2026-11-17); no
+// process is ever signalled by name or tracked by a persisted PID.
 //
 // The caller retains the policy preconditions: it must have externally
 // confirmed an unresponsive server (at least two failed host-version probes
@@ -159,6 +161,11 @@ struct LegacyAdbRecoveryRequest {
     // Optional live recheck, consulted before each stop stage in addition
     // to the snapshot flag above. True means a session is busy.
     std::function<bool()> hasActiveOrStartingPhoneSessions;
+    // Optional: the caller's authority to act (false once the user chose
+    // another source). Asked with every cancellation check, so also before
+    // each stop stage and right before host:kill's bytes are written: false
+    // ends the attempt as Canceled and stops nothing further.
+    std::function<bool()> stillWanted;
     LegacyAdbProvenanceExpectations expectations;
     LegacyAdbRecoveryPolicy policy;
 };
@@ -183,6 +190,232 @@ struct LegacyAdbRecoveryResult {
 // works, which still needs a fresh owned bootstrap, discovery and frames.
 LegacyAdbRecoveryResult TryReclaimLegacyBundledAdbServer(
     const LegacyAdbRecoveryRequest& request);
+
+// Owner decision of 2026-11-17 ("kill the hanging server"): a default-port
+// adb server that is confirmed hung, or that is responsive but blind to a
+// phone Windows shows and ignores host:kill, is stopped. This helper acts
+// only on the exact process behind the IPv4 loopback listener of `port`:
+// it opens that listener's owning process, requires the same PID and
+// creation time as the identity the caller observed before deciding, an
+// image file name equal to `requiredImageName` (adb.exe) and a process
+// other than this one, sends one raw host:kill when asked, and terminates
+// through the held handle only when the process outlives the wait and still
+// owns the listener. Never by name, never a tree, never a PID from storage.
+// Callers keep the policy preconditions: phone-use intent, no adb endpoint
+// override, no other device in state DEVICE on that server, no live session.
+struct DefaultAdbStopRequest {
+    std::uint16_t port{kLegacyAdbDefaultPort};
+    // Identity observed when the decision was made; 0 skips the check.
+    DWORD expectedProcessId{0};
+    std::uint64_t expectedCreation{0};
+    bool sendHostKillFirst{true};
+    // False: only ask (host:kill after every identity and image check) and
+    // report HostKillIgnored when the process outlives the wait.
+    bool terminateIfAlive{true};
+    std::wstring requiredImageName{L"adb.exe"};
+    const std::atomic<bool>* canceled{nullptr};
+    // Asked right before host:kill is sent (again after its connect and
+    // listener check, right before the first byte is written) and right
+    // before the termination: false does neither (status Canceled). The
+    // caller's authority to act can end while the stop runs (the user chose
+    // another source). Unset: always wanted.
+    std::function<bool()> stillWanted;
+    // Test seam only: runs after the raw host:kill connect completed, before
+    // the listener re-check and before any byte is written.
+    std::function<void()> afterHostKillConnectForTest;
+    std::chrono::milliseconds hostKillWait{2000};
+    std::chrono::milliseconds exitWait{2000};
+};
+enum class DefaultAdbStopStatus {
+    Stopped,          // The exact listener process exited.
+    NoListener,       // Nothing listens on the loopback port.
+    SelfListener,     // The listener is this process (never stopped).
+    NotAdb,           // Image name differs: not stopped.
+    IdentityChanged,  // PID/creation/listener changed: not stopped.
+    AccessDenied,     // Windows refused termination (elevated or another user).
+    HostKillIgnored,  // terminateIfAlive=false: asked, and it is still running.
+    Canceled,
+    Failed
+};
+struct DefaultAdbStopResult {
+    DefaultAdbStopStatus status{DefaultAdbStopStatus::Failed};
+    bool hostKillDelivered{false};
+    bool terminated{false};
+    DWORD processId{0};
+    std::string diagnostic; // No paths; image file name and PID only.
+};
+DefaultAdbStopResult TryStopDefaultAdbServer(const DefaultAdbStopRequest& request);
+
+// One row of the Windows TCP listener tables (IPv4 and IPv6), reduced to
+// what the adb listener lookups need.
+struct TcpListenerRow {
+    bool ipv6{false};
+    bool loopback{false};    // 127.0.0.1 or ::1
+    bool anyAddress{false};  // 0.0.0.0 or ::
+    std::uint16_t port{0};
+    DWORD processId{0};
+};
+// Reads both listener tables. False when a table cannot be read.
+bool ReadTcpListenerRows(std::vector<TcpListenerRow>* rows);
+// The rows that stand for the listener OkuFlow reaches on 127.0.0.1:port:
+// the IPv4 loopback rows; when there is none, the any-address rows of that
+// port (0.0.0.0, or :: of a dual-stack socket, as an adb started with -a
+// binds), which also accept loopback connections. ::1 alone is never
+// reached by 127.0.0.1 and is ignored. Every lookup that identifies the
+// default-port adb (and the legacy reclamation) uses this one rule; the
+// identity proof after it is unchanged (exact handle, creation time, image
+// adb.exe, not this process).
+std::vector<TcpListenerRow> AdbListenerRows(const std::vector<TcpListenerRow>& rows, std::uint16_t port);
+// Test seam (production never sets it): rewrites the rows read before every
+// lookup, so a fixture bound to loopback can stand for an any-address
+// listener without binding every address (which would show a firewall
+// prompt on the owner's desktop).
+void SetTcpListenerRowsTransformForTest(std::function<void(std::vector<TcpListenerRow>&)> transform);
+
+// Other running OkuFlow app/launcher processes of this user and session.
+// `sameImageOnly` keeps only processes whose image equals this process's
+// image (the same installation). Observation only; nothing is stopped.
+struct OkuFlowSibling {
+    DWORD processId{0};
+    std::uint64_t creation{0};
+    bool sameImage{false};
+    bool hasVisibleWindow{false};
+};
+std::vector<OkuFlowSibling> FindOkuFlowSiblings(bool sameImageOnly);
+
+// Leftover OkuFlow instances of this installation (iteration 2, A10).
+//
+// A real instance (a main window on the real Windows platform; offscreen
+// and test instances never register) creates two named kernel events in
+// its session namespace that carry the installation tag and its PID:
+//   Local\OkuFlow.Instance.<tag>.<pid>   exists while the instance lives
+//   Local\OkuFlow.Exiting.<tag>.<pid>    set when the instance begins to exit
+// The tag is a hash of the canonical image path, so only instances of the
+// same installation match. The kernel removes both names with the process.
+// A third object, a 4-byte named mapping
+//   Local\OkuFlow.UiThread.<tag>.<pid>   the thread that owns the main window
+// lets an observer judge the instance by that thread's windows only (a
+// helper thread's hidden window says nothing about the UI).
+inline std::wstring OkuFlowInstanceObjectName(bool exiting, const std::wstring& tag, DWORD processId)
+{
+    return std::wstring(exiting ? L"Local\\OkuFlow.Exiting." : L"Local\\OkuFlow.Instance.") + tag + L"." +
+           std::to_wstring(processId);
+}
+inline std::wstring OkuFlowInstanceUiThreadName(const std::wstring& tag, DWORD processId)
+{
+    return L"Local\\OkuFlow.UiThread." + tag + L"." + std::to_wstring(processId);
+}
+// Records `threadId` under that name; the returned mapping handle keeps the
+// record alive (close it with the registration). Null on failure.
+HANDLE RecordOkuFlowUiThread(const std::wstring& tag, DWORD processId, DWORD threadId);
+// Tag of this process's installation (hash of its canonical image path).
+std::wstring OkuFlowInstallationTag();
+std::wstring OkuFlowInstallationTag(const std::wstring& canonicalImagePath);
+
+class OkuFlowInstanceRegistration {
+public:
+    // Null when the objects cannot be created; nothing else depends on it.
+    // Call on the thread that owns the main window (the Qt GUI thread): it
+    // is recorded as the instance's UI thread.
+    static std::unique_ptr<OkuFlowInstanceRegistration> Register();
+    ~OkuFlowInstanceRegistration();
+    OkuFlowInstanceRegistration(const OkuFlowInstanceRegistration&) = delete;
+    OkuFlowInstanceRegistration& operator=(const OkuFlowInstanceRegistration&) = delete;
+    // The instance begins to exit (idempotent).
+    void SignalExiting();
+private:
+    OkuFlowInstanceRegistration(HANDLE registered, HANDLE exiting, HANDLE uiThread)
+        : registered_(registered), exiting_(exiting), uiThread_(uiThread) {}
+    HANDLE registered_{nullptr};
+    HANDLE exiting_{nullptr};
+    HANDLE uiThread_{nullptr};
+};
+
+// One observation of a sibling of the same image, user and session.
+struct OkuFlowSiblingObservation {
+    DWORD processId{0};
+    std::uint64_t creation{0};
+    bool registered{false};
+    bool exiting{false};
+    bool hasVisibleWindow{false};
+    // The windows of the instance's recorded UI thread (the thread that owns
+    // its main window) answered WM_NULL within 1 s: a hidden helper window on
+    // another thread neither vouches for a stuck UI nor, when it never pumps,
+    // makes a healthy UI look stuck. Without a recorded UI thread, every
+    // top-level window of the process must answer. Not asked at all when a
+    // visible window was found.
+    bool answersWindowMessage{false};
+    // The recorded UI thread owns no window at all: there is nothing to
+    // judge (its main window is not there yet or already gone before the
+    // exit signal, whose own grace then applies), so it stays Pending.
+    bool uiThreadHasNoWindow{false};
+};
+// `image` and `tag` default to this process's installation; tests pass a
+// fixture image and tag. Observation only: nothing is signalled. The window
+// messages are sent in short slices that observe `canceled`.
+std::vector<OkuFlowSiblingObservation> ObserveOkuFlowSiblings(const std::wstring& image = {},
+                                                               const std::wstring& tag = {},
+                                                               const std::atomic<bool>* canceled = nullptr);
+
+struct OkuFlowSiblingTrack {
+    std::int64_t exitingSinceMs{-1};
+    std::int64_t windowlessSinceMs{-1};
+};
+struct OkuFlowSiblingPolicy {
+    // The exit signal has been set this long and the process still lives.
+    // An instance sets it only after its critical teardown (recording
+    // finalization, image writes, capture stop, settings, its own adb).
+    std::int64_t exitingGraceMs{5000};
+    // Registered, no visible window on two observations this far apart, and
+    // no answer to a window message. Above the longest bounded critical
+    // teardown (about 17 s: recording join 3 s, image writes 10 s, capture
+    // stop 1.5 s, discovery and settings), which runs before the signal.
+    std::int64_t windowlessConfirmMs{20000};
+};
+enum class OkuFlowSiblingVerdict {
+    Windowed,               // A visible window: the user can close it; never terminated.
+    Pending,                // Not yet proven a leftover (or still starting).
+    Leftover,               // Proven leftover of this installation: may be terminated.
+    UnregisteredWindowless  // No registration (old version, test run): named, never terminated.
+};
+// Pure: classifies one observation and updates its track.
+OkuFlowSiblingVerdict ClassifyOkuFlowSibling(const OkuFlowSiblingObservation& observation,
+                                             OkuFlowSiblingTrack& track, std::int64_t nowMs,
+                                             const OkuFlowSiblingPolicy& policy = {});
+
+// Terminates the exact proven leftover through a held handle: same PID and
+// creation time, canonical image equal to `expectedImage`, not this
+// process. Its owned adb child then dies with its job object. If Windows
+// refuses, only that leftover's own adb child is stopped, and only when it
+// is proven: parent PID equal to the leftover, created after it, canonical
+// image equal to `bundledAdbImage` (this installation's platform-tools\adb.exe).
+struct LeftoverInstanceStopRequest {
+    DWORD processId{0};
+    std::uint64_t creation{0};
+    std::wstring expectedImage;   // Empty: this process's canonical image.
+    std::wstring bundledAdbImage; // Empty: <this image's directory>\platform-tools\adb.exe.
+    std::chrono::milliseconds exitWait{2000};
+    // Every wait observes this (application shutdown).
+    const std::atomic<bool>* canceled{nullptr};
+    // Test seams: the visible-window check made right before termination,
+    // and a termination Windows refuses (to reach the adb-child step).
+    std::function<bool(DWORD processId)> visibleWindowForTest;
+    bool refuseTerminationForTest{false};
+};
+enum class LeftoverInstanceStopStatus {
+    Stopped,          // The leftover instance exited.
+    AdbChildStopped,  // The instance could not be stopped; its exact adb child was.
+    Refused,          // Neither could be stopped (or the process cannot be opened): the user is told.
+    IdentityChanged   // Not the observed process or state any more (also a window appeared): nothing done.
+};
+LeftoverInstanceStopStatus StopLeftoverOkuFlowInstance(const LeftoverInstanceStopRequest& request);
+// The adb-child step alone (also used by tests). The parent is opened and
+// held for the whole step and must still live with exactly
+// `parentCreation`; otherwise nothing is stopped (a reused PID's children
+// are never walked).
+bool StopLeftoverAdbChild(DWORD parentId, std::uint64_t parentCreation, const std::wstring& bundledAdbImage,
+                          std::chrono::milliseconds exitWait = std::chrono::milliseconds(2000),
+                          const std::atomic<bool>* canceled = nullptr);
 
 } // namespace okuflow
 #endif

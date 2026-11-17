@@ -660,12 +660,65 @@ documented Qt 6.12.0 SDK; `-QtPrefix` overrides it.
 
 USB recovery uses two consecutive 2000ms shell-response timeouts, a fresh
 1000ms non-claiming companion probe and a 2000ms post-ack transport-ID check.
-Definitive health/phone responses suppress further health probes for 30 seconds;
-reconnect requests have a 60-second cooldown per endpoint/phone. Both budgets
-are in-process and reset on restart. Ordinary discovery polls every 5 seconds.
-Capture shutdown bounds its D3D11 completion-query poll to 1000ms while retaining
-the facade's shared 1500ms stop deadline. These limits avoid unbounded GPU waits
-and never authorize killing or replacing a foreign/shared adb server.
+Definitive health/phone responses suppress further health probes for 10 seconds;
+reconnect requests per endpoint/phone go at once, 3 s later, then every 30 s.
+All budgets are in-process, reset on restart and by link events (arrival,
+removal, resume, display on, start, manual pick, activation after 2 idle
+minutes). Discovery runs at the link doctor's pace: at once after an event,
+1 s for five failed cycles, then 2, 3, 5 s, ceiling 10 s; 2 s while waiting for
+the user; 5 s while healthy. Host budgets: 500ms connect, 1000ms per reply
+field, 1000ms companion probe transport, 2500ms read-only shell facts. Blind
+owned-server restart after 5 s (then 15 s, then 60 s); private server beside a
+blind default after 5 s; `host:kill` 6 s later; termination 2 s after that.
+A phone stuck (offline, connecting, stalled, no permissions) on a server
+OkuFlow does not own: two reconnects (at once, 3 s), then 6 s later the
+takeover (borrowed default) or the re-plug sentence (user endpoint). The user
+endpoint also gets the re-plug sentence when it does not list a phone Windows
+shows after the 5 s blind grace, and when it stays unresponsive for 30 s
+(`userEndpointUnresponsiveMs`). Per
+episode: 3 blind/stuck restarts, 2 `host:kill`, 3 terminations, 3 aborted stops
+(terminations aborted because the default answered its pre-stop listing and
+`host:kill` requests never sent to a default that still listens; counted apart from the caps, and apart for a
+hung default and for a takeover, they end in the other-program sentence too), 4 private server starts beside the
+default plus hand-backs. Iteration 8: an owned server whose listing fails
+while its version answers is restarted after the 5 s grace (15 s, then 60 s,
+3 per episode, then the re-plug sentence); a default whose listing fails on
+two listings spanning 5 s is a confirmed hang; starts of OkuFlow's own adb
+that stay silent past the 30 s start grace (one count per grace) or die
+before answering count with launch failures toward the AdbCannotStart
+sentence (2); resume signals within 5 s of the last applied resume are one
+event; 4 removals within 60 s name the cable until the link holds 10 s or no
+removal comes for 30 s. Iteration 9 changes no number: a restart a live
+session defers is given back (not one of the 3), a private child dropped
+without ever answering counts toward the AdbCannotStart 2 (after round 10:
+only one that died, or whose readiness wait ran out or a probe found silent
+past it; nothing for a release for a webcam), and a termination
+or ask refused for a live session (registered, a frame within 2 s) counts toward the 3 aborted stops. Windows interface Unknown
+(the SetupAPI query failed): after 30 s blind OkuFlow may start or restart its
+own server, never ask another to exit or stop it; that takeover, or a hung
+default unresponsive for 30 s, ends in the re-plug sentence. Companion problem
+(busy camera, failed, no mode): sentence after 20 s. A hang confirmed only by
+version probes gets one listing attempt (500 ms connect, 1000 ms per reply
+field) before termination; any answer to it, an adb FAIL reply included,
+keeps the server, and one that shows another device ends in the
+other-program sentence. Companion wake + launch: at once, 3 s, 6 s, then
+every 20 s, one budget shared by discovery and camera starts (at most one per
+start attempt; once per event while the app process runs with its listener
+closed, not counting the 5 s after OkuFlow's own launch; a hold ends when the
+app process is gone, relaunching at once the first time per event and 20 s after
+the last launch later). A resumed phone
+session must present a frame within 3 s. Owned bootstrap/crash cooldown 5 s,
+doubling to 30 s. Capture shutdown bounds its D3D11 completion-query poll to
+1000ms while retaining the facade's shared 1500ms stop deadline. Stopping a
+default-port adb follows only the owner's 2026-11-17 rule (android/PROTOCOL.md);
+an adb endpoint environment variable is never stopped.
+
+Phone link trace (always on): `Debug\phone-link.log` under the user data root,
+rotated to `phone-link.log.1` at 256 KiB (two files at most). One line per link
+event, diagnosis change and ladder action, with a monotonic millisecond time and
+UTC time. Phones appear only as `phone-<8 hex>` (SHA-256 prefix of the serial);
+no file paths, user names or serial numbers are written. The owner can attach
+these two files to a failure report.
 
 - `scripts/build_and_run.bat` configures `build\`
 - The helper prefers launching:
@@ -1037,10 +1090,18 @@ Update this file whenever these defaults move or new fixed paths are introduced.
 - No phone serial/model is embedded. Saved `cameraSymbolicLink` is a user
   preference; `cameraSelectionExplicit` distinguishes a manual webcam choice
   from an implicit fallback. Runtime transport IDs are never saved.
-- Discovery runs asynchronously every 5 s, with a 100 ms UI completion pulse.
-  Probe ACK deadline is 1500 ms; listing reads are 150 ms. Unknown listing
-  results preserve the cache. Failure retries back off 5/10/20/60 s; busy/hot
-  starts wait at least 30 s. A new transport or readiness transition resets it.
+- Discovery runs asynchronously at the link doctor's pace (see "Build
+  Directories" above: at once after an event, 1 s, then up to 10 s; 2 s while
+  waiting for the user; 5 s healthy), with a 100 ms UI completion pulse.
+  Probe ACK deadline is 1500 ms; listing reads are 1000 ms per reply field.
+  Unknown listing results preserve the cache. Automatic discovery starts only
+  a phone whose companion probe answered ready (also with no camera running,
+  and never the phone the link doctor waits for the user on); a locked or
+  paused phone is woken and launched by the ladder instead, and manual picks
+  are not restricted. Failed automatic starts back off
+  1/2/3/5/10 s; busy/hot starts wait at least 5 s (the phone holds those
+  problems for 10 s). A new transport, readiness transition or link event
+  resets it.
 - `ADB_SERVER_SOCKET` accepts `tcp:<port>` or local `tcp:<host>:<port>`;
   `ANDROID_ADB_SERVER_PORT` and `ANDROID_ADB_SERVER_ADDRESS` accept local TCP.
   Default is `127.0.0.1:5037`; nonlocal/invalid overrides disable USB phones.
@@ -1056,12 +1117,16 @@ Update this file whenever these defaults move or new fixed paths are introduced.
   With no default listener/override, hidden direct server starts select a
   private ephemeral loopback port. An exact owned child in a non-inherited
   kill-on-close job dies at normal exit or process crash. Failed launch, child
-  exit and confirmed-hang relaunch attempts retain a 30 s cooldown. Existing
-  unknown listeners/overrides remain borrowed, never replaced or killed; their runtime
-  files may remain locked after OkuFlow exits (`OkuFlow2` fallback).
-  Owned health probes use a 100 ms connect deadline and 1000 ms per bounded
-  host-version read, with two consecutive failures before an idle restart.
-  Readiness polling uses a 5 s deadline and 50 ms slices (an in-progress bounded
+  exit and confirmed-hang relaunch attempts wait 5 s, doubling to 30 s, reset by
+  every link event. Overrides remain borrowed, never replaced or killed. A
+  default-port `adb.exe` that is confirmed hung or blind is stopped under the
+  owner's 2026-11-17 rule (android/PROTOCOL.md); other default listeners stay
+  borrowed. Their runtime files may remain locked after OkuFlow exits
+  (`OkuFlow2` fallback).
+  Owned health probes use a 500 ms connect deadline and 1000 ms per bounded
+  host-version read, with two consecutive failures 1 s apart before an idle
+  restart, and never within 30 s of the launch of a child that has not answered
+  yet. Readiness polling uses a 5 s deadline and 50 ms slices (an in-progress bounded
   probe can finish beyond that deadline). Live/starting phone sessions and
   cancellation suppress restart. Lifecycle/port/budget state is process-local.
   Bootstrap requires phone-use intent. Explicit webcam selection relinquishes
@@ -1069,6 +1134,24 @@ Update this file whenever these defaults move or new fixed paths are introduced.
   verifies the IPv4 loopback listener's PID against its held process. A dead
   child can yield to a responsive default listener after its sessions finish; shutdown forbids any
   later owned bootstrap. WinUSB exclusivity is documented in adb_distribution.md.
+- OkuFlow instance registration (real instances only, never offscreen or
+  test runs): named events `Local\OkuFlow.Instance.<tag>.<pid>` and
+  `Local\OkuFlow.Exiting.<tag>.<pid>` in the session namespace, where `<tag>` is
+  a 64-bit FNV-1a hash (16 hex digits) of the lower-case canonical image path.
+  No file, no registry value; the kernel removes the names with the process.
+  The exit signal is set after the critical teardown, not at quit. Leftover
+  proof: exit signal set for 5 s, or no window on two observations 20 s apart
+  plus the registered UI thread's windows not answering `WM_NULL` within 1 s
+  (named 4-byte mapping `Local\OkuFlow.UiThread.<tag>.<pid>` holds that
+  thread; without it every top-level window must answer; a recorded thread
+  with no window at all proves nothing) (100 ms
+  slices that observe shutdown; never sent to a sibling with a visible window).
+  Stopped only while the phone is unlisted, the interface present and the 5 s
+  blind grace over; exit and adb-child waits 2 s, both cancellable.
+- The phone link trace (`phone-link.log`) is written by one private writer
+  thread; callers, including the UI thread, only queue lines (at most 1024
+  waiting). Action results are fixed reasons, never adb error texts, which can
+  carry a serial.
 - Cancellable adb lock waits use 20 ms slices; Port reads use a synchronize-only
   atomic child snapshot. Server epochs observe loopback port/PID/creation time.
   Borrowed hangs need two failures spanning 5 s before phone-intent recovery.
@@ -1083,10 +1166,18 @@ Update this file whenever these defaults move or new fixed paths are introduced.
   acquisition is capped at 3 s, host-kill connect at 500 ms, graceful/forced exit
   waits at 2 s each. Private fixtures inject their own manifest/launcher hashes,
   root, scan scope, mutex and port, never the owner's port 5037. An unused shadow
-  hands back after an empty raw transport list and two healthy default probes.
-- Automatic activity launch is limited to one attempt per serial/transport.
-  A manual phone selection renews it. Permission, busy and thermal probe
-  problems wait for phone-state changes instead of forcing foreground every 5 s.
+  hands back after an empty raw transport list of its own and two default
+  listings in a row that show a USB phone ready, unauthorized or authorizing
+  (an answer alone is not enough), within the per-episode hand-over cap.
+- Automatic activity launch (wake + `am start`) uses the link doctor's one
+  per-event budget for discovery and camera starts: at once, 3 s, 6 s, then
+  every 20 s; at most one per camera start attempt; once per event while the
+  app process runs with its listener closed, except within 5 s after
+  OkuFlow's own launch (still starting, not held); a hold ends when the app
+  process is gone (relaunch at once the first time per event, later 20 s after
+  the last launch). A manual phone selection renews
+  it. Permission, busy and thermal probe problems wait for phone-state changes
+  instead of forcing foreground.
 - Source builds use `%LOCALAPPDATA%/OkuFlow/adb-source-build` by default;
   `scripts/build_adb_from_source.ps1 -BuildRoot` selects another local root.
   Inputs and GCC 16.2.0 are pinned in `scripts/adb-source/pins.json`.

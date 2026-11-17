@@ -3761,5 +3761,73 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Formula could not be read. The original image is unchanged.</source>
         <translation>فرمول خوانده نشد. تصویر اصلی تغییری نکرده است.</translation>
     </message>
+    <message>
+        <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
+        <translation>تلفن را با USB وصل کنید، سپس در تلفن «انتقال فایل» را انتخاب کنید و اشکال‌زدایی USB را روشن کنید.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>قفل تلفن را باز کنید و در پرسش اشکال‌زدایی USB روی «اجازه دادن» ضربه بزنید. اگر پرسشی نمایش داده نشد، کابل USB را جدا کنید و دوباره وصل کنید.</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>برنامهٔ OkuFlow دوربین در تلفن پاسخ نمی‌دهد. آن را در تلفن ببندید و دوباره باز کنید.</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>کابل USB تلفن را جدا کنید و دوباره وصل کنید.</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow نمی‌تواند اتصال USB تلفن را شروع کند. OkuFlow را دوباره نصب کنید، یا در برنامهٔ ضدویروس خود به آن اجازه دهید.</translation>
+    </message>
+    <message>
+        <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>
+        <translation>دوربین تلفن راه‌اندازی نشد. برنامه‌های دوربین دیگر را در تلفن ببندید، سپس برنامهٔ OkuFlow دوربین را دوباره باز کنید.</translation>
+    </message>
+    <message>
+        <source>A different phone is connected. Connect the phone you chose in OkuFlow, or choose the connected phone under Settings, Camera.</source>
+        <translation>تلفن دیگری وصل است. تلفنی را که در OkuFlow انتخاب کرده‌اید وصل کنید، یا تلفن وصل‌شده را از بخش تنظیمات، گزینهٔ دوربین انتخاب کنید.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone.</source>
+        <translation>قفل تلفن را باز کنید.</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone.</source>
+        <translation>برنامهٔ OkuFlow دوربین را در تلفن باز کنید.</translation>
+    </message>
+    <message>
+        <source>Install OkuFlow Camera on the phone.</source>
+        <translation>برنامهٔ OkuFlow دوربین را روی تلفن نصب کنید.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera and tap Resume streaming.</source>
+        <translation>در تلفن، برنامهٔ OkuFlow دوربین را باز کنید و روی «از سرگیری پخش جریانی» ضربه بزنید.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming.</source>
+        <translation>در تلفن، برنامهٔ OkuFlow دوربین را باز کنید. اگر نشان داد که پخش جریانی متوقف شده است، روی «از سرگیری پخش جریانی» ضربه بزنید.</translation>
+    </message>
+    <message>
+        <source>Another computer or program is using the phone camera.</source>
+        <translation>رایانه یا برنامهٔ دیگری از دوربین تلفن استفاده می‌کند.</translation>
+    </message>
+    <message>
+        <source>Camera access is blocked on the phone.</source>
+        <translation>دسترسی به دوربین در تلفن مسدود شده است.</translation>
+    </message>
+    <message>
+        <source>The phone is too hot. Let it cool down.</source>
+        <translation>تلفن بیش از حد داغ است. بگذارید خنک شود.</translation>
+    </message>
+    <message>
+        <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
+        <translation>پنجرهٔ دیگری از OkuFlow از تلفن استفاده می‌کند. برای استفاده از تلفن در اینجا آن را ببندید.</translation>
+    </message>
+    <message>
+        <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
+        <translation>برنامهٔ دیگری از اتصال USB تلفن استفاده می‌کند. آن را ببندید یا رایانه را دوباره راه‌اندازی کنید.</translation>
+    </message>
 </context>
 </TS>

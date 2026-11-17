@@ -1,10 +1,11 @@
 #ifdef _WIN32
 #include "okuflow/capture/adb_legacy_recovery.hpp"
 
+// ws2tcpip.h first: the IPv6 listener table types need ws2ipdef.h.
+#include <ws2tcpip.h>
 #include <iphlpapi.h>
 #include <sddl.h>
 #include <tlhelp32.h>
-#include <ws2tcpip.h>
 
 #include <QCryptographicHash>
 #include <QFile>
@@ -54,8 +55,12 @@ struct SocketGuard {
 
 bool Canceled(const LegacyAdbRecoveryRequest& request)
 {
+    // A request that lost its authority (the user chose another source)
+    // ends like a canceled one: before every stop stage and right before
+    // host:kill's bytes are written.
     return (request.canceled && request.canceled->load()) ||
-           (request.shutdownRequested && request.shutdownRequested->load());
+           (request.shutdownRequested && request.shutdownRequested->load()) ||
+           (request.stillWanted && !request.stillWanted());
 }
 
 std::chrono::milliseconds ClampMs(std::chrono::milliseconds value,
@@ -226,26 +231,15 @@ bool SameIdentity(const ProcessIdentity& left, const ProcessIdentity& right)
 
 enum class ListenerLookup { Found, None, Ambiguous, Error };
 
-// Observation only: maps the exact 127.0.0.1 listener for the port to one
-// PID. The PID is used solely to open the exact handle revalidated later.
+// Observation only: maps the listener OkuFlow reaches on 127.0.0.1:port
+// (AdbListenerRows: loopback, else any-address) to one PID. The PID is used
+// solely to open the exact handle revalidated later.
 ListenerLookup FindLoopbackListenerPid(std::uint16_t port, DWORD* pid)
 {
-    ULONG bytes = 0;
-    if (GetExtendedTcpTable(nullptr, &bytes, FALSE, AF_INET, TCP_TABLE_OWNER_PID_LISTENER, 0) !=
-        ERROR_INSUFFICIENT_BUFFER)
-        return ListenerLookup::Error;
-    std::vector<std::uint8_t> storage(bytes);
-    if (GetExtendedTcpTable(storage.data(), &bytes, FALSE, AF_INET,
-                            TCP_TABLE_OWNER_PID_LISTENER, 0) != NO_ERROR)
-        return ListenerLookup::Error;
-    const auto* table = reinterpret_cast<const MIB_TCPTABLE_OWNER_PID*>(storage.data());
+    std::vector<TcpListenerRow> rows;
+    if (!ReadTcpListenerRows(&rows)) return ListenerLookup::Error;
     std::set<DWORD> owners;
-    for (DWORD i = 0; i < table->dwNumEntries; ++i) {
-        const auto& row = table->table[i];
-        if (ntohs(static_cast<u_short>(row.dwLocalPort)) == port &&
-            ntohl(row.dwLocalAddr) == INADDR_LOOPBACK)
-            owners.insert(row.dwOwningPid);
-    }
+    for (const auto& row : AdbListenerRows(rows, port)) owners.insert(row.processId);
     if (owners.empty()) return ListenerLookup::None;
     if (owners.size() > 1) return ListenerLookup::Ambiguous;
     *pid = *owners.begin();
@@ -752,7 +746,648 @@ void NotePortAfterExit(std::uint16_t port, DWORD oldPid, std::string* diagnostic
     }
 }
 
+// Raw host:kill to the loopback port after re-checking, post-connect, that
+// the listener still belongs to `pid`. No adb client process is run.
+// `stillWanted` is asked once more right before the first byte is written
+// (the connect and the listener check can take a while): false sends
+// nothing.
+bool SendRawHostKill(std::uint16_t port, DWORD pid, const std::atomic<bool>* canceled,
+                     const std::function<bool()>& stillWanted, const std::function<void()>& afterConnectForTest)
+{
+    static std::once_flag winsockOnce;
+    static int winsockResult = -1;
+    std::call_once(winsockOnce, [] {
+        WSADATA data{};
+        winsockResult = WSAStartup(MAKEWORD(2, 2), &data);
+    });
+    if (winsockResult != 0) return false;
+    SocketGuard guard{socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)};
+    if (guard.socket == INVALID_SOCKET) return false;
+    u_long nonBlocking = 1;
+    if (ioctlsocket(guard.socket, FIONBIO, &nonBlocking) != 0) return false;
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    address.sin_port = htons(port);
+    if (connect(guard.socket, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0) {
+        if (WSAGetLastError() != WSAEWOULDBLOCK) return false;
+        const auto deadline = Clock::now() + std::chrono::milliseconds(500);
+        for (;;) {
+            if (canceled && canceled->load()) return false;
+            fd_set writable{};
+            FD_SET(guard.socket, &writable);
+            timeval slice{0, 20 * 1000};
+            const int ready = select(0, nullptr, &writable, nullptr, &slice);
+            if (ready > 0) {
+                int socketError = 0;
+                int bytes = sizeof(socketError);
+                if (getsockopt(guard.socket, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&socketError), &bytes) != 0 ||
+                    socketError != 0)
+                    return false;
+                break;
+            }
+            if (ready < 0 || Clock::now() >= deadline) return false;
+        }
+    }
+    if (afterConnectForTest) afterConnectForTest();
+    DWORD listener = 0;
+    if (FindLoopbackListenerPid(port, &listener) != ListenerLookup::Found || listener != pid) return false;
+    constexpr char requestBytes[] = "0009host:kill";
+    constexpr int requestLength = static_cast<int>(sizeof(requestBytes) - 1);
+    const auto deadline = Clock::now() + std::chrono::milliseconds(500);
+    for (int sent = 0; sent < requestLength;) {
+        if (canceled && canceled->load()) return false;
+        fd_set writable{};
+        FD_SET(guard.socket, &writable);
+        timeval slice{0, 20 * 1000};
+        if (select(0, nullptr, &writable, nullptr, &slice) <= 0) {
+            if (Clock::now() >= deadline) return false;
+            continue;
+        }
+        if (sent == 0 && stillWanted && !stillWanted()) return false;
+        const int now = send(guard.socket, requestBytes + sent, requestLength - sent, 0);
+        if (now <= 0) return false;
+        sent += now;
+    }
+    shutdown(guard.socket, SD_SEND);
+    return true;
+}
+
+std::uint64_t CreationTicks(const FILETIME& time)
+{
+    return (static_cast<std::uint64_t>(time.dwHighDateTime) << 32) | time.dwLowDateTime;
+}
+
+struct VisibleWindowSearch { DWORD pid{0}; bool found{false}; };
+BOOL CALLBACK FindVisibleWindow(HWND window, LPARAM parameter)
+{
+    auto* search = reinterpret_cast<VisibleWindowSearch*>(parameter);
+    DWORD owner = 0;
+    GetWindowThreadProcessId(window, &owner);
+    if (owner == search->pid && IsWindowVisible(window) && !GetWindow(window, GW_OWNER)) {
+        search->found = true;
+        return FALSE;
+    }
+    return TRUE;
+}
+
 } // namespace
+
+namespace {
+std::mutex& RowsTransformMutex() { static std::mutex mutex; return mutex; }
+std::function<void(std::vector<TcpListenerRow>&)>& RowsTransform()
+{
+    static std::function<void(std::vector<TcpListenerRow>&)> transform;
+    return transform;
+}
+// One listener table; the table can grow between the size query and the
+// read, so the read is retried.
+template <typename Table>
+bool ReadListenerTable(ULONG family, std::vector<std::uint8_t>* storage)
+{
+    ULONG bytes = 0;
+    if (GetExtendedTcpTable(nullptr, &bytes, FALSE, family, TCP_TABLE_OWNER_PID_LISTENER, 0) != ERROR_INSUFFICIENT_BUFFER)
+        return false;
+    DWORD result = ERROR_INSUFFICIENT_BUFFER;
+    for (int attempt = 0; attempt < 3 && result == ERROR_INSUFFICIENT_BUFFER; ++attempt) {
+        storage->resize(std::max<ULONG>(bytes, sizeof(Table)));
+        result = GetExtendedTcpTable(storage->data(), &bytes, FALSE, family, TCP_TABLE_OWNER_PID_LISTENER, 0);
+    }
+    return result == NO_ERROR;
+}
+} // namespace
+
+bool ReadTcpListenerRows(std::vector<TcpListenerRow>* rows)
+{
+    rows->clear();
+    std::vector<std::uint8_t> v4, v6;
+    if (!ReadListenerTable<MIB_TCPTABLE_OWNER_PID>(AF_INET, &v4)) return false;
+    const auto* table4 = reinterpret_cast<const MIB_TCPTABLE_OWNER_PID*>(v4.data());
+    for (DWORD i = 0; i < table4->dwNumEntries; ++i) {
+        const auto& row = table4->table[i];
+        TcpListenerRow out;
+        out.port = ntohs(static_cast<u_short>(row.dwLocalPort));
+        out.loopback = ntohl(row.dwLocalAddr) == INADDR_LOOPBACK;
+        out.anyAddress = row.dwLocalAddr == INADDR_ANY;
+        out.processId = row.dwOwningPid;
+        rows->push_back(out);
+    }
+    // No IPv6 stack is not an error: the IPv4 rows stand alone.
+    if (ReadListenerTable<MIB_TCP6TABLE_OWNER_PID>(AF_INET6, &v6)) {
+        const auto* table6 = reinterpret_cast<const MIB_TCP6TABLE_OWNER_PID*>(v6.data());
+        for (DWORD i = 0; i < table6->dwNumEntries; ++i) {
+            const auto& row = table6->table[i];
+            TcpListenerRow out;
+            out.ipv6 = true;
+            out.port = ntohs(static_cast<u_short>(row.dwLocalPort));
+            static const UCHAR any[16]{};
+            static const UCHAR loopback[16]{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
+            out.anyAddress = std::memcmp(row.ucLocalAddr, any, 16) == 0;
+            out.loopback = std::memcmp(row.ucLocalAddr, loopback, 16) == 0;
+            out.processId = row.dwOwningPid;
+            rows->push_back(out);
+        }
+    }
+    std::function<void(std::vector<TcpListenerRow>&)> transform;
+    { std::lock_guard lock(RowsTransformMutex()); transform = RowsTransform(); }
+    if (transform) transform(*rows);
+    return true;
+}
+
+std::vector<TcpListenerRow> AdbListenerRows(const std::vector<TcpListenerRow>& rows, std::uint16_t port)
+{
+    std::vector<TcpListenerRow> loopback, any;
+    for (const auto& row : rows) {
+        if (row.port != port) continue;
+        if (!row.ipv6 && row.loopback) loopback.push_back(row);
+        else if (row.anyAddress) any.push_back(row);
+    }
+    return loopback.empty() ? any : loopback;
+}
+
+void SetTcpListenerRowsTransformForTest(std::function<void(std::vector<TcpListenerRow>&)> transform)
+{
+    std::lock_guard lock(RowsTransformMutex());
+    RowsTransform() = std::move(transform);
+}
+
+DefaultAdbStopResult TryStopDefaultAdbServer(const DefaultAdbStopRequest& request)
+{
+    using S = DefaultAdbStopStatus;
+    DefaultAdbStopResult result;
+    const auto canceled = [&] { return request.canceled && request.canceled->load(); };
+    if (canceled()) { result.status = S::Canceled; return result; }
+    DWORD pid = 0;
+    switch (FindLoopbackListenerPid(request.port, &pid)) {
+    case ListenerLookup::Found: break;
+    case ListenerLookup::None:
+        result.status = S::NoListener; result.diagnostic = "No loopback listener"; return result;
+    case ListenerLookup::Ambiguous:
+        result.status = S::IdentityChanged; result.diagnostic = "Several processes listen on the port"; return result;
+    default:
+        result.status = S::Failed; result.diagnostic = ErrorText("Query loopback listener table"); return result;
+    }
+    result.processId = pid;
+    if (!pid || pid == GetCurrentProcessId()) {
+        result.status = S::SelfListener; result.diagnostic = "The listener is this process"; return result;
+    }
+    if (request.expectedProcessId && request.expectedProcessId != pid) {
+        result.status = S::IdentityChanged; result.diagnostic = "Listener PID changed since the decision"; return result;
+    }
+    HandleGuard process{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE | PROCESS_TERMINATE, FALSE, pid)};
+    bool canTerminate = process.handle != nullptr;
+    if (!process.handle) {
+        const DWORD error = GetLastError();
+        process.handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, pid);
+        if (!process.handle) {
+            result.status = error == ERROR_ACCESS_DENIED ? S::AccessDenied : S::Failed;
+            result.diagnostic = ErrorText("Open the listener process");
+            return result;
+        }
+    }
+    FILETIME created{}, exited{}, kernel{}, user{};
+    if (!GetProcessTimes(process.handle, &created, &exited, &kernel, &user) || !ProcessAlive(process.handle)) {
+        result.status = S::IdentityChanged; result.diagnostic = "Listener process exited"; return result;
+    }
+    if (request.expectedCreation && CreationTicks(created) != request.expectedCreation) {
+        result.status = S::IdentityChanged; result.diagnostic = "Listener creation time changed"; return result;
+    }
+    std::wstring image;
+    if (!ProcessCanonicalImage(process.handle, &image)) {
+        result.status = S::Failed; result.diagnostic = "Listener image cannot be read"; return result;
+    }
+    const std::wstring imageName = BaseName(image);
+    result.diagnostic = "listener pid " + std::to_string(pid);
+    if (!EqualNoCase(imageName, request.requiredImageName)) {
+        result.status = S::NotAdb; result.diagnostic += " is not the adb server image"; return result;
+    }
+    const auto stillSame = [&] {
+        DWORD listener = 0;
+        FILETIME again{}, e{}, k{}, u{};
+        return ProcessAlive(process.handle) &&
+            GetProcessTimes(process.handle, &again, &e, &k, &u) && CreationTicks(again) == CreationTicks(created) &&
+            FindLoopbackListenerPid(request.port, &listener) == ListenerLookup::Found && listener == pid;
+    };
+    const auto unwanted = [&] { return request.stillWanted && !request.stillWanted(); };
+    if (request.sendHostKillFirst) {
+        if (unwanted()) { result.status = S::Canceled; result.diagnostic += ": no longer wanted"; return result; }
+        result.hostKillDelivered = SendRawHostKill(request.port, pid, request.canceled, request.stillWanted,
+                                                   request.afterHostKillConnectForTest);
+        // Not sent because the request lost its authority meanwhile: nothing
+        // further (no termination either).
+        if (!result.hostKillDelivered && unwanted()) {
+            result.status = S::Canceled; result.diagnostic += ": no longer wanted"; return result;
+        }
+        if (result.hostKillDelivered) {
+            const auto deadline = Clock::now() + ClampMs(request.hostKillWait, std::chrono::milliseconds(0),
+                                                         std::chrono::milliseconds(5000));
+            while (Clock::now() < deadline && ProcessAlive(process.handle)) {
+                if (canceled()) { result.status = S::Canceled; return result; }
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+            if (!ProcessAlive(process.handle)) {
+                result.status = S::Stopped; result.diagnostic += " exited after host:kill"; return result;
+            }
+        }
+    }
+    if (canceled()) { result.status = S::Canceled; return result; }
+    if (!request.terminateIfAlive) {
+        result.status = request.sendHostKillFirst && !result.hostKillDelivered ? S::Failed : S::HostKillIgnored;
+        result.diagnostic += result.hostKillDelivered ? " outlived host:kill" : ": host:kill not delivered";
+        return result;
+    }
+    if (!stillSame()) {
+        if (!ProcessAlive(process.handle)) { result.status = S::Stopped; result.diagnostic += " exited"; return result; }
+        result.status = S::IdentityChanged; result.diagnostic += " changed before termination"; return result;
+    }
+    if (!canTerminate) {
+        result.status = S::AccessDenied; result.diagnostic += ": Windows denied termination"; return result;
+    }
+    if (unwanted()) { result.status = S::Canceled; result.diagnostic += ": no longer wanted"; return result; }
+    if (!TerminateProcess(process.handle, 1)) {
+        const DWORD error = GetLastError();
+        if (!ProcessAlive(process.handle)) { result.status = S::Stopped; result.diagnostic += " exited"; return result; }
+        result.status = error == ERROR_ACCESS_DENIED ? S::AccessDenied : S::Failed;
+        result.diagnostic += ": " + ErrorText("Terminate the listener process");
+        return result;
+    }
+    result.terminated = true;
+    const auto deadline = Clock::now() + ClampMs(request.exitWait, std::chrono::milliseconds(50),
+                                                 std::chrono::milliseconds(5000));
+    while (Clock::now() < deadline && ProcessAlive(process.handle) && !canceled())
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (ProcessAlive(process.handle) && canceled()) {
+        result.status = S::Canceled; result.diagnostic += " terminated; exit wait canceled"; return result;
+    }
+    result.status = ProcessAlive(process.handle) ? S::Failed : S::Stopped;
+    result.diagnostic += result.status == S::Stopped ? " terminated through its exact handle"
+                                                     : " did not exit after termination";
+    return result;
+}
+
+std::vector<OkuFlowSibling> FindOkuFlowSiblings(bool sameImageOnly)
+{
+    std::vector<OkuFlowSibling> siblings;
+    std::wstring ownImage;
+    {
+        HandleGuard self{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, GetCurrentProcessId())};
+        if (!self.handle || !ProcessCanonicalImage(self.handle, &ownImage)) return siblings;
+    }
+    HandleGuard snapshot{CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)};
+    if (snapshot.handle == INVALID_HANDLE_VALUE) return siblings;
+    std::map<DWORD, DWORD> parents;
+    std::map<DWORD, std::wstring> names;
+    PROCESSENTRY32W entry{sizeof(entry)};
+    if (!Process32FirstW(snapshot.handle, &entry)) return siblings;
+    do {
+        parents[entry.th32ProcessID] = entry.th32ParentProcessID;
+        names[entry.th32ProcessID] = entry.szExeFile;
+    } while (Process32NextW(snapshot.handle, &entry));
+    const DWORD currentPid = GetCurrentProcessId();
+    std::set<DWORD> ancestors;
+    for (DWORD at = currentPid, steps = 0; steps < 16; ++steps) {
+        const auto found = parents.find(at);
+        if (found == parents.end() || !found->second || found->second == at) break;
+        ancestors.insert(found->second);
+        at = found->second;
+    }
+    DWORD currentSession = 0;
+    std::vector<unsigned char> currentSid;
+    if (!ProcessIdToSessionId(currentPid, &currentSession) || !CurrentUserSid(&currentSid, nullptr)) return siblings;
+    const std::wstring ownName = BaseName(ownImage);
+    for (const auto& [pid, name] : names) {
+        if (pid == currentPid || ancestors.contains(pid)) continue;
+        if (!EqualNoCase(name, ownName) && !EqualNoCase(name, L"OkuFlowApp.exe")) continue;
+        DWORD session = 0;
+        if (!ProcessIdToSessionId(pid, &session) || session != currentSession) continue;
+        HandleGuard process{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid)};
+        if (!process.handle) continue;
+        HandleGuard token;
+        std::vector<unsigned char> sid;
+        if (!OpenProcessToken(process.handle, TOKEN_QUERY, &token.handle) || !TokenUserSid(token.handle, &sid) ||
+            sid != currentSid)
+            continue;
+        std::wstring image;
+        OkuFlowSibling sibling;
+        sibling.processId = pid;
+        sibling.sameImage = ProcessCanonicalImage(process.handle, &image) && EqualNoCase(image, ownImage);
+        if (sameImageOnly && !sibling.sameImage) continue;
+        FILETIME created{}, exited{}, kernel{}, user{};
+        if (GetProcessTimes(process.handle, &created, &exited, &kernel, &user)) sibling.creation = CreationTicks(created);
+        VisibleWindowSearch search{pid};
+        EnumWindows(FindVisibleWindow, reinterpret_cast<LPARAM>(&search));
+        sibling.hasVisibleWindow = search.found;
+        siblings.push_back(sibling);
+    }
+    return siblings;
+}
+
+namespace {
+std::wstring OwnCanonicalImage()
+{
+    HandleGuard self{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, GetCurrentProcessId())};
+    std::wstring image;
+    if (!self.handle || !ProcessCanonicalImage(self.handle, &image)) return {};
+    return image;
+}
+
+// Every top-level window of the process (bounded): a stuck UI thread is not
+// vouched for by a hidden helper window of another thread that still pumps.
+struct TopLevelWindowSearch { DWORD pid{0}; std::vector<HWND> windows; };
+BOOL CALLBACK CollectTopLevelWindows(HWND window, LPARAM parameter)
+{
+    auto* search = reinterpret_cast<TopLevelWindowSearch*>(parameter);
+    DWORD owner = 0;
+    GetWindowThreadProcessId(window, &owner);
+    if (owner == search->pid) search->windows.push_back(window);
+    return search->windows.size() < 32 ? TRUE : FALSE;
+}
+// The windows of one thread (the instance's recorded UI thread), bounded.
+BOOL CALLBACK CollectThreadWindows(HWND window, LPARAM parameter)
+{
+    auto* search = reinterpret_cast<TopLevelWindowSearch*>(parameter);
+    search->windows.push_back(window);
+    return search->windows.size() < 32 ? TRUE : FALSE;
+}
+// The UI thread an instance recorded at registration, if it still belongs
+// to that process.
+std::optional<DWORD> RecordedUiThread(const std::wstring& tag, DWORD pid)
+{
+    HandleGuard mapping{OpenFileMappingW(FILE_MAP_READ, FALSE, OkuFlowInstanceUiThreadName(tag, pid).c_str())};
+    if (!mapping.handle) return std::nullopt;
+    const void* view = MapViewOfFile(mapping.handle, FILE_MAP_READ, 0, 0, sizeof(DWORD));
+    if (!view) return std::nullopt;
+    DWORD threadId = 0;
+    std::memcpy(&threadId, view, sizeof(threadId));
+    UnmapViewOfFile(view);
+    HandleGuard thread{OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, threadId)};
+    if (!threadId || !thread.handle || GetProcessIdOfThread(thread.handle) != pid) return std::nullopt;
+    return threadId;
+}
+bool StopRequested(const std::atomic<bool>* canceled) { return canceled && canceled->load(); }
+// WM_NULL within 1 s, sent in 100 ms slices that observe cancellation.
+bool AnswersWindowMessage(HWND window, const std::atomic<bool>* canceled)
+{
+    for (int slice = 0; slice < 10; ++slice) {
+        if (StopRequested(canceled)) return false;
+        DWORD_PTR answer = 0;
+        SetLastError(ERROR_SUCCESS);
+        if (SendMessageTimeoutW(window, WM_NULL, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 100, &answer)) return true;
+        // Hung (not pumping for 5 s) or gone: no point in waiting longer.
+        if (GetLastError() != ERROR_TIMEOUT || !IsWindow(window)) return false;
+    }
+    return false;
+}
+// Waits for a process to exit in short slices that observe cancellation.
+void WaitForExit(HANDLE process, std::chrono::milliseconds wait, const std::atomic<bool>* canceled)
+{
+    const auto deadline = Clock::now() + wait;
+    while (Clock::now() < deadline && !StopRequested(canceled) &&
+           WaitForSingleObject(process, 20) == WAIT_TIMEOUT) {}
+}
+bool HasVisibleWindow(DWORD pid)
+{
+    VisibleWindowSearch visible{pid};
+    EnumWindows(FindVisibleWindow, reinterpret_cast<LPARAM>(&visible));
+    return visible.found;
+}
+} // namespace
+
+std::wstring OkuFlowInstallationTag(const std::wstring& canonicalImagePath)
+{
+    // FNV-1a 64 over the lower-case path: stable, no secrets, short.
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (wchar_t ch : canonicalImagePath) {
+        ch = static_cast<wchar_t>(towlower(ch));
+        hash ^= static_cast<std::uint64_t>(ch);
+        hash *= 1099511628211ULL;
+    }
+    wchar_t text[17]{};
+    swprintf_s(text, L"%016llx", static_cast<unsigned long long>(hash));
+    return text;
+}
+
+std::wstring OkuFlowInstallationTag()
+{
+    return OkuFlowInstallationTag(OwnCanonicalImage());
+}
+
+HANDLE RecordOkuFlowUiThread(const std::wstring& tag, DWORD processId, DWORD threadId)
+{
+    HANDLE mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(DWORD),
+                                        OkuFlowInstanceUiThreadName(tag, processId).c_str());
+    if (!mapping) return nullptr;
+    void* view = MapViewOfFile(mapping, FILE_MAP_WRITE, 0, 0, sizeof(DWORD));
+    if (!view) { CloseHandle(mapping); return nullptr; }
+    std::memcpy(view, &threadId, sizeof(threadId));
+    UnmapViewOfFile(view);
+    return mapping;
+}
+
+std::unique_ptr<OkuFlowInstanceRegistration> OkuFlowInstanceRegistration::Register()
+{
+    const auto tag = OkuFlowInstallationTag();
+    const DWORD pid = GetCurrentProcessId();
+    HANDLE registered = CreateEventW(nullptr, TRUE, FALSE, OkuFlowInstanceObjectName(false, tag, pid).c_str());
+    if (!registered) return nullptr;
+    HANDLE exiting = CreateEventW(nullptr, TRUE, FALSE, OkuFlowInstanceObjectName(true, tag, pid).c_str());
+    if (!exiting) { CloseHandle(registered); return nullptr; }
+    // The caller is the GUI thread that owns the main window. Without this
+    // record an observer falls back to every top-level window.
+    HANDLE uiThread = RecordOkuFlowUiThread(tag, pid, GetCurrentThreadId());
+    return std::unique_ptr<OkuFlowInstanceRegistration>(new OkuFlowInstanceRegistration(registered, exiting, uiThread));
+}
+
+OkuFlowInstanceRegistration::~OkuFlowInstanceRegistration()
+{
+    if (uiThread_) CloseHandle(uiThread_);
+    if (exiting_) CloseHandle(exiting_);
+    if (registered_) CloseHandle(registered_);
+}
+
+void OkuFlowInstanceRegistration::SignalExiting()
+{
+    if (exiting_) SetEvent(exiting_);
+}
+
+std::vector<OkuFlowSiblingObservation> ObserveOkuFlowSiblings(const std::wstring& image, const std::wstring& tag,
+                                                               const std::atomic<bool>* canceled)
+{
+    std::vector<OkuFlowSiblingObservation> result;
+    std::wstring wantedImage = image;
+    if (wantedImage.empty()) wantedImage = OwnCanonicalImage();
+    else if (!CanonicalFilePath(image, &wantedImage)) return result;
+    if (wantedImage.empty()) return result;
+    const std::wstring wantedTag = tag.empty() ? OkuFlowInstallationTag(wantedImage) : tag;
+    const std::wstring wantedName = BaseName(wantedImage);
+    HandleGuard snapshot{CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)};
+    if (snapshot.handle == INVALID_HANDLE_VALUE) return result;
+    std::map<DWORD, DWORD> parents;
+    std::map<DWORD, std::wstring> names;
+    PROCESSENTRY32W entry{sizeof(entry)};
+    if (!Process32FirstW(snapshot.handle, &entry)) return result;
+    do {
+        parents[entry.th32ProcessID] = entry.th32ParentProcessID;
+        names[entry.th32ProcessID] = entry.szExeFile;
+    } while (Process32NextW(snapshot.handle, &entry));
+    const DWORD currentPid = GetCurrentProcessId();
+    std::set<DWORD> ancestors;
+    for (DWORD at = currentPid, steps = 0; steps < 16; ++steps) {
+        const auto found = parents.find(at);
+        if (found == parents.end() || !found->second || found->second == at) break;
+        ancestors.insert(found->second);
+        at = found->second;
+    }
+    DWORD currentSession = 0;
+    std::vector<unsigned char> currentSid;
+    if (!ProcessIdToSessionId(currentPid, &currentSession) || !CurrentUserSid(&currentSid, nullptr)) return result;
+    for (const auto& [pid, name] : names) {
+        if (StopRequested(canceled)) break;
+        if (pid == currentPid || ancestors.contains(pid) || !EqualNoCase(name, wantedName)) continue;
+        DWORD session = 0;
+        if (!ProcessIdToSessionId(pid, &session) || session != currentSession) continue;
+        HandleGuard process{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid)};
+        if (!process.handle) continue;
+        HandleGuard token;
+        std::vector<unsigned char> sid;
+        if (!OpenProcessToken(process.handle, TOKEN_QUERY, &token.handle) || !TokenUserSid(token.handle, &sid) ||
+            sid != currentSid)
+            continue;
+        std::wstring candidateImage;
+        if (!ProcessCanonicalImage(process.handle, &candidateImage) || !EqualNoCase(candidateImage, wantedImage)) continue;
+        OkuFlowSiblingObservation sibling;
+        sibling.processId = pid;
+        FILETIME created{}, exited{}, kernel{}, user{};
+        if (GetProcessTimes(process.handle, &created, &exited, &kernel, &user)) sibling.creation = CreationTicks(created);
+        HandleGuard registered{OpenEventW(SYNCHRONIZE, FALSE, OkuFlowInstanceObjectName(false, wantedTag, pid).c_str())};
+        sibling.registered = registered.handle != nullptr;
+        if (sibling.registered) {
+            HandleGuard exiting{OpenEventW(SYNCHRONIZE, FALSE, OkuFlowInstanceObjectName(true, wantedTag, pid).c_str())};
+            sibling.exiting = exiting.handle && WaitForSingleObject(exiting.handle, 0) == WAIT_OBJECT_0;
+        }
+        sibling.hasVisibleWindow = HasVisibleWindow(pid);
+        // A visible window is the user's to close whatever it answers: no
+        // message (up to a second each on the discovery worker).
+        if (!sibling.hasVisibleWindow) {
+            // Judged by the recorded UI thread's windows only; without that
+            // record (an older registration), by every top-level window.
+            TopLevelWindowSearch windows{pid};
+            const auto uiThread = sibling.registered ? RecordedUiThread(wantedTag, pid) : std::nullopt;
+            if (uiThread) EnumThreadWindows(*uiThread, CollectThreadWindows, reinterpret_cast<LPARAM>(&windows));
+            else EnumWindows(CollectTopLevelWindows, reinterpret_cast<LPARAM>(&windows));
+            sibling.uiThreadHasNoWindow = uiThread && windows.windows.empty();
+            sibling.answersWindowMessage = !windows.windows.empty() &&
+                std::all_of(windows.windows.begin(), windows.windows.end(),
+                            [&](HWND window) { return AnswersWindowMessage(window, canceled); });
+        }
+        result.push_back(sibling);
+    }
+    return result;
+}
+
+OkuFlowSiblingVerdict ClassifyOkuFlowSibling(const OkuFlowSiblingObservation& o, OkuFlowSiblingTrack& track,
+                                             std::int64_t nowMs, const OkuFlowSiblingPolicy& policy)
+{
+    using V = OkuFlowSiblingVerdict;
+    if (o.hasVisibleWindow) {
+        track = {};
+        return V::Windowed;
+    }
+    if (!o.registered) return V::UnregisteredWindowless;
+    if (o.exiting) {
+        if (track.exitingSinceMs < 0) track.exitingSinceMs = nowMs;
+        return nowMs - track.exitingSinceMs >= policy.exitingGraceMs ? V::Leftover : V::Pending;
+    }
+    track.exitingSinceMs = -1;
+    if (o.answersWindowMessage || o.uiThreadHasNoWindow) {
+        // Hidden but alive (starting, or a window being recreated), or its
+        // recorded UI thread has no window to judge at all.
+        track.windowlessSinceMs = -1;
+        return V::Pending;
+    }
+    if (track.windowlessSinceMs < 0) track.windowlessSinceMs = nowMs;
+    return nowMs - track.windowlessSinceMs >= policy.windowlessConfirmMs ? V::Leftover : V::Pending;
+}
+
+bool StopLeftoverAdbChild(DWORD parentId, std::uint64_t parentCreation, const std::wstring& bundledAdbImage,
+                          std::chrono::milliseconds exitWait, const std::atomic<bool>* canceled)
+{
+    std::wstring wantedImage;
+    if (StopRequested(canceled) || !CanonicalFilePath(bundledAdbImage, &wantedImage)) return false;
+    // The parent is held for the whole step: its PID cannot be reused while
+    // the children are walked, and it must still be the observed process.
+    HandleGuard parent{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, parentId)};
+    if (!parent.handle) return false;
+    {
+        FILETIME created{}, exited{}, kernel{}, user{};
+        if (!GetProcessTimes(parent.handle, &created, &exited, &kernel, &user) || !ProcessAlive(parent.handle) ||
+            CreationTicks(created) != parentCreation)
+            return false;
+    }
+    HandleGuard snapshot{CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)};
+    if (snapshot.handle == INVALID_HANDLE_VALUE) return false;
+    std::vector<DWORD> children;
+    PROCESSENTRY32W entry{sizeof(entry)};
+    if (!Process32FirstW(snapshot.handle, &entry)) return false;
+    do {
+        if (entry.th32ParentProcessID == parentId && entry.th32ProcessID != GetCurrentProcessId())
+            children.push_back(entry.th32ProcessID);
+    } while (Process32NextW(snapshot.handle, &entry));
+    bool stopped = false;
+    for (const DWORD child : children) {
+        if (StopRequested(canceled)) break;
+        HandleGuard process{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE | PROCESS_TERMINATE,
+                                        FALSE, child)};
+        if (!process.handle) continue;
+        FILETIME created{}, exited{}, kernel{}, user{};
+        // A parent PID can be reused: the child must be younger than the parent.
+        if (!GetProcessTimes(process.handle, &created, &exited, &kernel, &user) ||
+            CreationTicks(created) < parentCreation || !ProcessAlive(process.handle))
+            continue;
+        std::wstring image;
+        if (!ProcessCanonicalImage(process.handle, &image) || !EqualNoCase(image, wantedImage)) continue;
+        if (!TerminateProcess(process.handle, 1)) continue;
+        WaitForExit(process.handle, exitWait, canceled);
+        stopped = stopped || !ProcessAlive(process.handle);
+    }
+    return stopped;
+}
+
+LeftoverInstanceStopStatus StopLeftoverOkuFlowInstance(const LeftoverInstanceStopRequest& request)
+{
+    using S = LeftoverInstanceStopStatus;
+    if (!request.processId || request.processId == GetCurrentProcessId()) return S::IdentityChanged;
+    std::wstring expectedImage = request.expectedImage.empty() ? OwnCanonicalImage() : request.expectedImage;
+    if (!request.expectedImage.empty() && !CanonicalFilePath(request.expectedImage, &expectedImage)) return S::IdentityChanged;
+    const std::wstring bundledAdb = request.bundledAdbImage.empty()
+        ? JoinPath(JoinPath(DirName(expectedImage), L"platform-tools"), L"adb.exe") : request.bundledAdbImage;
+    HandleGuard process{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE | PROCESS_TERMINATE,
+                                    FALSE, request.processId)};
+    bool canTerminate = process.handle != nullptr && !request.refuseTerminationForTest;
+    if (!process.handle)
+        process.handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, request.processId);
+    // Not even the identity can be checked (or the process is gone): stop
+    // nothing. Whoever has that PID now is not walked for children.
+    if (!process.handle) return S::Refused;
+    FILETIME created{}, exited{}, kernel{}, user{};
+    std::wstring image;
+    if (!GetProcessTimes(process.handle, &created, &exited, &kernel, &user) || !ProcessAlive(process.handle) ||
+        CreationTicks(created) != request.creation || !ProcessCanonicalImage(process.handle, &image) ||
+        !EqualNoCase(image, expectedImage))
+        return S::IdentityChanged;
+    if (StopRequested(request.canceled)) return S::IdentityChanged;
+    // A window that appeared since the observation is the user's to close.
+    const bool visibleNow = request.visibleWindowForTest ? request.visibleWindowForTest(request.processId)
+                                                         : HasVisibleWindow(request.processId);
+    if (visibleNow) return S::IdentityChanged;
+    if (canTerminate && TerminateProcess(process.handle, 1)) {
+        WaitForExit(process.handle, request.exitWait, request.canceled);
+        if (!ProcessAlive(process.handle)) return S::Stopped;
+    }
+    // Still holding the parent handle whose creation and image matched.
+    return StopLeftoverAdbChild(request.processId, request.creation, bundledAdb, request.exitWait, request.canceled)
+        ? S::AdbChildStopped : S::Refused;
+}
 
 LegacyAdbRecoveryResult TryReclaimLegacyBundledAdbServer(
     const LegacyAdbRecoveryRequest& request)

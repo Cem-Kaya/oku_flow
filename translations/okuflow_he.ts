@@ -3761,5 +3761,73 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Formula could not be read. The original image is unchanged.</source>
         <translation>לא ניתן לקרוא את הנוסחה. התמונה המקורית לא השתנתה.</translation>
     </message>
+    <message>
+        <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
+        <translation>חבר את הטלפון ב־USB, ואז בטלפון בחר 'העברת קבצים' והפעל ניפוי באגים ב־USB.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>בטל את נעילת הטלפון והקש 'אפשר' בשאלה על ניפוי באגים ב־USB. אם לא מופיעה שאלה, נתק את כבל ה־USB וחבר אותו שוב.</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>OkuFlow מצלמה לא מגיבה בטלפון. סגור אותה בטלפון ופתח אותה שוב.</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>נתק את כבל ה־USB של הטלפון וחבר אותו שוב.</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow לא יכול להפעיל את חיבור הטלפון ב־USB. התקן מחדש את OkuFlow, או אפשר אותו בתוכנת האנטי־וירוס.</translation>
+    </message>
+    <message>
+        <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>
+        <translation>לא ניתן היה להפעיל את מצלמת הטלפון. סגור אפליקציות מצלמה אחרות בטלפון ולאחר מכן פתח שוב את OkuFlow מצלמה.</translation>
+    </message>
+    <message>
+        <source>A different phone is connected. Connect the phone you chose in OkuFlow, or choose the connected phone under Settings, Camera.</source>
+        <translation>מחובר טלפון אחר. חבר את הטלפון שבחרת ב-OkuFlow, או בחר את הטלפון המחובר תחת הגדרות, מצלמה.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone.</source>
+        <translation>בטל את נעילת הטלפון.</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone.</source>
+        <translation>פתח בטלפון את OkuFlow מצלמה.</translation>
+    </message>
+    <message>
+        <source>Install OkuFlow Camera on the phone.</source>
+        <translation>התקן בטלפון את OkuFlow מצלמה.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera and tap Resume streaming.</source>
+        <translation>בטלפון, פתח את OkuFlow מצלמה והקש על 'המשך את הסטרימינג'.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming.</source>
+        <translation>בטלפון, פתח את OkuFlow מצלמה. אם מוצג שהסטרימינג מושהה, הקש על 'המשך את הסטרימינג'.</translation>
+    </message>
+    <message>
+        <source>Another computer or program is using the phone camera.</source>
+        <translation>מחשב או תוכנה אחרים משתמשים במצלמת הטלפון.</translation>
+    </message>
+    <message>
+        <source>Camera access is blocked on the phone.</source>
+        <translation>הגישה למצלמה חסומה בטלפון.</translation>
+    </message>
+    <message>
+        <source>The phone is too hot. Let it cool down.</source>
+        <translation>הטלפון חם מדי. המתן שיתקרר.</translation>
+    </message>
+    <message>
+        <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
+        <translation>חלון OkuFlow אחר משתמש בטלפון. סגור אותו כדי להשתמש בטלפון כאן.</translation>
+    </message>
+    <message>
+        <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
+        <translation>תוכנה אחרת משתמשת בחיבור ה־USB של הטלפון. סגור אותה או הפעל מחדש את המחשב.</translation>
+    </message>
 </context>
 </TS>

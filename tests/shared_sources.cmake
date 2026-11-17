@@ -229,7 +229,8 @@ okuflow_share_equivalent_sources(okuflow_shared_adb_owned_server_1
     SOURCES ${PROJECT_SOURCE_DIR}/src/capture/adb_owned_server.cpp
         ${PROJECT_SOURCE_DIR}/src/capture/media_capture.cpp
         ${PROJECT_SOURCE_DIR}/src/capture/media_capture_facade.cpp
-        ${PROJECT_SOURCE_DIR}/src/capture/phone_camera.cpp)
+        ${PROJECT_SOURCE_DIR}/src/capture/phone_camera.cpp
+        ${PROJECT_SOURCE_DIR}/src/capture/phone_link_doctor.cpp)
 
 okuflow_share_equivalent_sources(okuflow_shared_capture_buffer_1
     TARGETS oku_flow phone_camera_tests capture_shutdown_tests capture_buffer_tests

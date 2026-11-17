@@ -16,7 +16,11 @@ The phone app requires OkuFlow for Windows on the computer. Download it from
 supports data transfer. The phone's cable-connection screen explains this
 requirement in all 25 supported languages.
 
-The Alpha update, 0.1.4 (code 5), includes the completed wording review
+The Alpha update, 0.1.5 (code 6), was committed through the CLI on 2026-11-17
+with the phone-link recovery changes (lock-screen visibility on a computer
+launch, withdrawn by Pause; a `paused` answer while streaming is paused). Its
+review approval, tester availability and behaviour on a real phone have not
+been verified. The earlier 0.1.4 (code 5) update includes the completed wording review
 across the 25 UI languages, including Dutch. New
 installations follow the phone language; **Advanced settings → Language** offers
 a saved manual choice and System default. The Advanced entry has a gear icon.

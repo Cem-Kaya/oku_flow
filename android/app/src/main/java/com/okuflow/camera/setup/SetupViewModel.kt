@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.okuflow.camera.link.HostProblem
 import com.okuflow.camera.link.HostLink
+import com.okuflow.camera.link.PausedStatusEndpoint
 import com.okuflow.camera.camera.CameraStreamService
 import com.okuflow.camera.camera.StreamingPauseReceiver
 import com.okuflow.camera.settings.StreamingIntentStore
@@ -29,6 +30,10 @@ class SetupViewModel(application: Application) : AndroidViewModel(application) {
     val settings = settingsStore.state
     val diagnostics = HostLink.details.asStateFlow()
     val problem = HostLink.problem
+
+    // While Pause is saved, the computer can still tell "paused" from "not
+    // running" without the camera starting (process-wide, see the endpoint).
+    init { PausedStatusEndpoint.start(application) }
 
     fun updateSettings(patch: (CameraSettings) -> CameraSettings) {
         val before = settingsStore.state.value
@@ -58,7 +63,9 @@ class SetupViewModel(application: Application) : AndroidViewModel(application) {
 
     fun pauseStreaming() = StreamingPauseReceiver.pauseStreaming(getApplication())
     fun resumeStreaming() {
-        if (streamingIntent.resume()) refresh()
+        // The status listener lets go of the socket name before the camera
+        // service can start and bind it.
+        if (PausedStatusEndpoint.releaseForResume { streamingIntent.resume() }) refresh()
     }
 
     val step: StateFlow<SetupStep> =

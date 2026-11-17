@@ -12,6 +12,7 @@
 #include <QLocale>
 #include "debug_log.hpp"
 #include "okuflow/capture/phone_camera.hpp"
+#include "okuflow/capture/adb_legacy_recovery.hpp"
 
 #include <QSaveFile>
 #include <QStandardPaths>
@@ -465,6 +466,10 @@ bool OkuFlowApp::Initialize()
     connect(uiState_->cameraCombo_, &QComboBox::currentIndexChanged,
             this, &OkuFlowApp::OnCameraSelectionChanged);
     connect(mainWindow_.get(), &MainWindow::phoneUsbArrived, this, &OkuFlowApp::OnPhoneUsbArrival);
+    connect(mainWindow_.get(), &MainWindow::phoneUsbRemoved, this, &OkuFlowApp::OnPhoneUsbRemoval);
+    connect(mainWindow_.get(), &MainWindow::systemSuspending, this, &OkuFlowApp::OnSystemSuspend);
+    connect(mainWindow_.get(), &MainWindow::systemResumed, this, &OkuFlowApp::OnSystemResume);
+    connect(mainWindow_.get(), &MainWindow::windowActivationChanged, this, &OkuFlowApp::OnWindowActivationChanged);
     connect(uiState_->phoneLightButton_, &QPushButton::clicked, this, [this]() {
         if (cameraActive_ && mediaCapture_.PhoneTorchAvailable())
             SetPhoneTorch(!mediaCapture_.PhoneTorchEnabled());
@@ -1382,9 +1387,32 @@ bool OkuFlowApp::Initialize()
     controlTarget_ = std::make_unique<agent::AppControlTarget>(*this);
     controlService_ = std::make_unique<agent::AppControlService>(*controlTarget_,agent::BuiltControlCatalogEdition());
     InitializeAgentControl();
+    {
+        // Always-on phone link trace beside the debug logs (no serials, no paths).
+        QString traceError;
+        const QString traceDirectory = userDataPaths_ ? userDataPaths_->Debug(&traceError) : QString();
+        if (!traceDirectory.isEmpty())
+            SetPhoneLinkTraceFile(QDir(traceDirectory).filePath(QStringLiteral("phone-link.log")).toStdWString());
+        // Only a real instance (the Windows platform, a main window) registers;
+        // offscreen and test instances never do, so they are never taken for
+        // a leftover of this installation and never terminated.
+        if (QGuiApplication::platformName() == QStringLiteral("windows") && mainWindow_) {
+            // The exit signal is raised by the destructor after the critical
+            // teardown (recording, image writes, capture stop, settings, the
+            // owned adb), never at aboutToQuit: a quick reopen must not stop
+            // an instance that is still finalizing a recording.
+            instanceRegistration_ = OkuFlowInstanceRegistration::Register();
+        }
+        for (const auto& sibling : FindOkuFlowSiblings(true))
+            TracePhoneLink(std::string("start-up: another OkuFlow instance of this installation is running, ") +
+                           (sibling.hasVisibleWindow ? "with a window" : "without a window"));
+        // Application start opens a fresh, fast recovery ladder; the first
+        // discovery runs on the first pulse.
+        NotePhoneLinkEvent(PhoneLinkEvent::AppStart);
+    }
     auto* phoneDiscoveryPulse = new QTimer(this);
     phoneDiscoveryPulse->setInterval(100);
-    connect(phoneDiscoveryPulse, &QTimer::timeout, this, &OkuFlowApp::PollPhoneCameraDiscovery);
+    connect(phoneDiscoveryPulse, &QTimer::timeout, this, &OkuFlowApp::OnPhoneDiscoveryPulse);
     phoneDiscoveryPulse->start();
     return true;
 }
@@ -1464,6 +1492,11 @@ OkuFlowApp::~OkuFlowApp() {
     // running on the default endpoint or explicitly overridden) is left
     // exactly as found.
     ShutdownOwnedAdbServer();
+    // The critical teardown is done (recording finalized or abandoned, image
+    // writes, capture stop, settings, the owned adb that held the phone): a
+    // sibling may treat this instance as a leftover only if it still lives a
+    // few seconds after this signal.
+    if (instanceRegistration_) instanceRegistration_->SignalExiting();
     mediaFoundationTeardownUnsafe =
         mediaFoundationTeardownUnsafe || mediaCapture_.WasAbandoned() ||
         (startupWorkers_ && (startupWorkers_->active.load() != 0 ||

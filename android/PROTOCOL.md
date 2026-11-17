@@ -32,50 +32,274 @@ Windows borrows a listener there or an explicit local endpoint override. When
 neither exists, Windows launches an owned server on a private ephemeral
 loopback port and uses that endpoint for all host/transport requests.
 The initial `host:track-devices-proto-binary` snapshot identifies
-`ConnectionType.USB` and authorized `ConnectionState.DEVICE`. This works when
-native Windows adb supplies no bus address. Connections select that
-`host:transport-id:<id>` and then `localabstract:okuflow_camera`. Older servers
-fall back to `host:devices-l`, accepting only entries with explicit `usb:`
-evidence. Wi-Fi, emulators and unknown transports are excluded. The Python probe never owns the server lifecycle. Windows polls in the
-background every five seconds and, without an existing listener or endpoint
-override, may directly start a hidden local `adb -L tcp:<port> server nodaemon`. It never
-runs client start-server/kill-server commands, upgrades or replaces another
-tool's server, or adds adb forwards. Local TCP endpoint overrides are honored;
-remote or unsupported endpoints are refused. Bootstrap retries wait at least
-30 seconds, including failed launches and unexpected child exits. The exact
-owned child is assigned to a non-inherited kill-on-close Windows job before
-it resumes; normal OkuFlow shutdown and process crash both terminate it.
-Owned bootstrap requires phone-use intent; an explicit webcam choice prevents
-it and relinquishes an idle owned server. Emulator scanning is disabled with
-`ADB_EMU=0`; owned support rejects external host-kill requests with
-`ADB_REJECT_KILL_SERVER=1`. WinUSB ownership can hide these phones from a second server;
-cooperating tools can use the logged private port or start SDK adb first.
-Readiness is polled for five seconds in 50ms slices. Two consecutive
-unresponsive host-version probes allow restarting only that owned child, with
-cancellation and live/starting camera sessions taking precedence. Pre-existing
-and overridden servers remain borrowed. Only confirmed-hung, reviewed legacy
-OkuFlow bundles qualify for the separately provenanced reclamation in
-docs/adb_distribution.md; unknown/SDK/overridden servers remain untouched.
-The host-version read deadline is one second per bounded field. Listener
-ownership is checked against the exact held child process; a foreign listener
-on a raced port is not accepted as owned. Dead children can yield to a newly
-responsive default server after its sessions finish. Startup/recovery reports automatic retry without
-manual process-management instructions. Shutdown latches out new owned launches.
-After a failed stream or idle preferred-phone probe, Windows may issue
-`host-transport-id:<id>:reconnect` only after a responsive adb version/listing
-and two consecutive 2-second full-token echo timeouts, followed by a fresh
-non-claiming companion timeout. The same authorized USB transport must remain
-listed after these checks. A per-process, per-phone/server one-minute limit
-survives transport-ID changes, but not process restarts. Healthy or definitive
-phone answers suppress health probes for 30 seconds. Busy/paused/error states and other discovered phones do
-not trigger recovery; other adb clients of the selected phone briefly lose
-that transport. Global hangs use the guarded owned/legacy lifecycle above,
-or a private shadow while an unknown listener remains untouched. An unused
-shadow hands back only after no raw transports and two healthy default probes.
-Server epochs include process creation time to distinguish reused transport IDs.
-After acknowledgment, a 2-second window must observe disappearance or
-a new transport ID before reporting transport recovery. Normal discovery and
-a fresh camera session follow; recovered transport is not successful video delivery.
+`ConnectionType.USB` and authorized `ConnectionState.DEVICE` for the camera
+list. This works when native Windows adb supplies no bus address. Connections
+select that `host:transport-id:<id>` and then `localabstract:okuflow_camera`.
+Older servers fall back to `host:devices-l`, accepting only entries with
+explicit `usb:` evidence. Wi-Fi, emulators and unknown transports are excluded
+from the camera list. The recovery logic additionally keeps every listed USB
+transport with its raw state (connecting 1, authorizing 2, unauthorized 3, no
+permission 4, offline 6, device 8 in AOSP `devices.proto` numbering) so it can
+name and act on states the camera list hides. The Python probe never owns the
+server lifecycle.
+
+Windows discovers in the background. Its pace comes from the link doctor
+(`phone_link_doctor`): at once after an event (application start, ADB interface
+arrival or removal, resume from sleep or the display turning on again, a manual
+pick, the window activated after two idle minutes), then 1 s for five failed
+cycles, then 2, 3, 5 s and at most 10 s. States only the user can resolve
+(unauthorized, locked phone after two launch attempts, paused, busy with
+another host, hot, blocked, no ADB interface) are polled every 2 s without
+back-off. Host budgets: 500 ms connect (cancellation checked every 20 ms),
+1000 ms per host reply field, 1000 ms companion probe transport.
+
+Without an existing listener or endpoint override, Windows may directly start a
+hidden local `adb -L tcp:<port> server nodaemon`. It never runs client
+start-server/kill-server commands and adds no adb forwards. Local TCP endpoint
+overrides are honored; remote or unsupported endpoints are refused. Owned
+bootstrap and crash relaunch wait 5 s, doubling to at most 30 s without a new
+event; every event returns to 5 s. The exact owned child is assigned to a
+non-inherited kill-on-close Windows job before it resumes; normal OkuFlow
+shutdown and process crash both terminate it. Owned bootstrap requires
+phone-use intent; an explicit webcam choice prevents it and relinquishes an
+idle owned server. Emulator scanning is disabled with `ADB_EMU=0`; owned
+support rejects external host-kill requests with `ADB_REJECT_KILL_SERVER=1`.
+WinUSB ownership can hide these phones from a second server; cooperating tools
+can use the logged private port or start SDK adb first. Readiness is polled for
+five seconds in 50ms slices. Two consecutive unresponsive host-version probes
+allow restarting only that owned child, with cancellation and live/starting
+camera sessions taking precedence. The host-version read deadline is one second
+per bounded field. Listener ownership is checked against the exact held child
+process; a foreign listener on a raced port is not accepted as owned. Dead
+children can yield to a newly responsive default server after its sessions
+finish. Startup/recovery reports automatic retry without manual
+process-management instructions. Shutdown latches out new owned launches.
+
+### Recovery ladder (Windows)
+
+Each discovery cycle with phone-use intent observes the whole chain (Windows
+ADB interface through SetupAPI, server kind and health, the target phone's raw
+state, the companion probe and, when adbd answers but the companion does not,
+one read-only shell query: `dumpsys power` wakefulness, `dumpsys window`
+keyguard lines, `pm path` and `pidof` for both packages, closed by the line
+`OKUFLOW_FACTS_END`; Windows reads to that whole line, so output that contains
+"END" elsewhere does not cut it short). The doctor names one
+diagnosis and one next action, least disturbing first:
+
+1. List again.
+2. Targeted `host-transport-id:<id>:reconnect`, also for a transport listed
+   `offline`, `connecting`, `no permissions` or in a state OkuFlow does not
+   know (`host:reconnect-offline` when no id is known, and only on OkuFlow's
+   own private server, since it reaches every offline device of that server):
+   at once, 3 s later, then every 30 s until the next event. `authorizing` is
+   the Allow handshake and is never reset; it reads "Restoring USB
+   connection…" for 2 s and then asks the user to tap Allow. A phone listed
+   `unauthorized` for 20 s without a change gets one targeted reconnect per
+   event, which makes the phone ask the Allow question again. A
+   transport in state DEVICE keeps the earlier proof steps before a reset
+   (responsive version and listing, two consecutive 2-second full-token echo
+   timeouts, a fresh non-claiming companion timeout, the same transport still
+   listed, 2-second post-ack disappearance check); the per-phone/server cadence
+   is at once, 3 s, then 30 s, renewed by events. Healthy or definitive answers
+   suppress health probes for 10 s. On a server OkuFlow does not own (a
+   borrowed default-port server or the user's own endpoint) a phone that stays
+   `offline`, `connecting`, stalled or with `no permissions` gets two targeted
+   reconnects (counted also when one cannot be sent, for example without a
+   transport id), then an end state 6 s later: a default-port server that keeps
+   it stuck is holding the USB interface without serving it and follows rung 4
+   (unless it serves another device in state DEVICE: the other-program
+   sentence); the user's endpoint is never taken over and Windows asks for a
+   re-plug of the cable. The same sentence ends the user's endpoint's other
+   states: responsive but not listing a phone Windows shows (after the 5 s
+   blind grace) and unresponsive for 30 s.
+3. Restart OkuFlow's own server when it answers `host:version` but lists no USB
+   entry at all although Windows shows the ADB interface (another listed phone
+   is not blindness), 5 s after the last event or first such observation, or
+   when a transport stays offline or connecting 6 s after two reconnects; then
+   15 s, then 60 s. At most three restarts per episode (until the next event);
+   after that Windows asks the user to unplug the phone's cable and plug it
+   back in, and keeps probing. Live sessions that deliver frames defer it.
+   When Windows cannot say whether the ADB interface is there (only when the
+   SetupAPI query itself fails; a phone that does not publish the standard ADB
+   interface GUID reads as absent and gets the connect sentence), OkuFlow's
+   own server is treated as if it were there after 30 s blind: the same
+   restarts, cap and re-plug sentence, and a private server may be started
+   beside a blind default. This is never a reason to ask a server OkuFlow did
+   not start to exit or to stop it: such a takeover ends in the re-plug
+   sentence after the takeover grace, and a hung default after 30 s
+   unresponsive. A first automatic start with no saved phone wants the phone
+   under "unknown" once the server lists a USB phone.
+   While OkuFlow's own server is blind, Windows also looks at the default port:
+   another adb there (Android Studio, scrcpy, a vendor suite, or one restarted
+   after `host:kill`) is handed back to when it lists the phone ready,
+   unauthorized or authorizing (offline, connecting or no permissions there is
+   not serving it, and neither is "ready" for a phone whose adbd timed out on
+   that same listener earlier in the episode), and otherwise follows rung 4.
+4. A borrowed default-port server that is responsive but blind for 5 s, or
+   that keeps the phone stuck after rung 2, gets a private owned server beside
+   it; whichever lists the phone is used, and a default that lists the phone
+   ready, unauthorized or authorizing is handed back to at once. A phone that
+   default listed ready while its adbd did not answer (a stalled transport)
+   stays "not served" there until an event, adbd answering there, or another
+   listener: while its shell stays silent, that listing never stops `host:kill`
+   or termination from going on. Right before either, Windows asks the phone's
+   shell once more through that listener; if it answers, nothing is stopped and
+   USB is handed back on the next cycle. Starts of the
+   private server beside the default and hand-backs (also the hand-back of a
+   private server started for a hung default, which needs the same usable
+   listing, never just an answer) are counted together, also the private
+   server started at once beside a confirmed hung default. At four per
+   episode no more private servers are started beside the default, while a
+   default that lists the phone is still handed back to (the count ends where
+   the phone is listed); then Windows says another program is using the
+   phone's USB connection.
+   If neither lists it 6 s later and that default lists no other device in
+   state DEVICE, Windows sends it `host:kill` (the ordinary request every adb
+   client sends on a version mismatch). If its listener remains 2 s later, or
+   if the default is confirmed hung (two failed version probes of the same
+   listener spanning 5 s, also after a resume or start, confirmed by the
+   doctor's own probe while OkuFlow's server runs beside it), Windows
+   terminates exactly that process (see "Default-port server stop" below).
+   Termination needs the Windows ADB interface to be present, checked again
+   when the stop runs (also before `host:kill`). A hang confirmed only by
+   version probes first gets one short listing attempt: if it is answered at
+   all (another device, the phone, just an answer, or an adb FAIL reply: a
+   slow but healthy server, or one that recovered) nothing is stopped and the
+   hang must be confirmed again from scratch. When that listing showed
+   another device in state DEVICE, the default serves someone: Windows says
+   another program is using the phone's USB connection instead of trying
+   again; while it says so, Windows lists that server again every 2 s (an
+   emulator or network device that goes away raises no Windows event), and a
+   listing without another device ends that sentence. A hung
+   listener with the phone unplugged reads as "connect the phone", not as
+   recovery. A stop outcome noted after a newer event belongs to the old
+   episode and is dropped. A listener that
+   does not accept a connection (a timed-out connect, or a refused one while
+   the listener table still shows it, as for a frozen adb with a full accept
+   queue) counts as hung, never as absent. Per episode at most two
+   `host:kill` requests and three terminations (a termination not carried out
+   because the default answered its listing does not count toward them, nor
+   does a `host:kill` request that was never sent, which no termination
+   follows (the first one of an episode whose server was already gone is not
+   an aborted stop either; further ones are); but three such aborted stops of the same rung, the hung server's
+   or the takeover's, end in the same sentence, which a
+   server that recovers or goes away ends); a different
+   process that appears on the port is a new takeover and is asked first.
+   Starts beside the default and hand-backs count only once they happened.
+   After the caps,
+   or when a stop is refused, Windows says another program is using the
+   phone's USB connection instead of fighting.
+5. Phone side: when the companion socket is refused or times out while adbd
+   answers, Windows sends `input keyevent KEYCODE_WAKEUP` and
+   `am start -n com.okuflow/com.okuflow.camera.MainActivity --ez
+   com.okuflow.camera.extra.HOST_LAUNCH true` (the legacy debug package only
+   when the Play activity is absent): at once after an event, 3 s and 6 s later,
+   then every 20 s while the user wants the phone. Camera starts take at most
+   one wake + launch per start attempt from that same per-event budget (no
+   timer of their own). The app is never force-stopped. Two exceptions end
+   the loop: when the app process runs but its listener refuses (the companion
+   installed before the paused-status answer, while paused), whatever the
+   keyguard shows, discovery and camera starts together launch once per event
+   and Windows asks the user to open OkuFlow Camera and, if it shows that
+   streaming is paused, to tap Resume streaming (also right when its camera
+   service did not start). Within 5 s after OkuFlow's own launch such a
+   refusal is a launch still starting and holds nothing (the ordinary spacing
+   applies), and a hold ends as soon as the app process is no longer running,
+   which is relaunched at once the first time after an event and otherwise 20 s
+   after the last launch (Pause survives the process, so an app that keeps
+   being killed is not brought forward every time);
+   when the listener accepts but never answers after two launches (or after
+   that single launch), Windows asks the user to close OkuFlow Camera on the
+   phone and open it again (relaunching would only bring the hanging activity
+   forward). A companion problem other than paused, another host, blocked or
+   hot (the camera busy in another phone app, failed, no mode) reads
+   "Restoring" for 20 s, then Windows asks the user to close other camera apps
+   on the phone and open OkuFlow Camera again.
+6. When only the user can act, Windows shows one sentence (authorize, unlock,
+   open the app, tap Resume streaming, re-plug the cable, close and reopen the
+   app, close another program, reinstall when OkuFlow's own adb cannot be
+   started twice in a row, which a missing `adb.exe` reaches at once and an
+   adb that is killed before it answers reaches after the private server's
+   launch back-off; connect the chosen phone or choose the connected one when
+   another phone is listed) and keeps probing. The status line speaks the
+   sentence itself, after every discovery result, also while a fallback webcam
+   shows the picture, and a passing notification does not replace it.
+
+`PhoneCameraTransport::Start` waits up to 4 s (inside its 12-second budget) for
+a selected phone that is listed but not yet in state DEVICE. Every diagnosis
+change and every ladder action is one line in the debug log and in the always-on
+`phone-link.log` (see docs/hardcoded_paths.md); phone serials appear only as a
+short hash.
+
+### Default-port server stop (owner decision, 2026-11-17)
+
+The owner decided on 2026-11-17 that a default-port adb server that hangs is to
+be killed, not worked around. This replaces the earlier rule that an unknown
+listener is never terminated. Windows stops a default-port server only with
+phone-use intent, when no adb endpoint environment variable is set, no other
+device is in state DEVICE on that server (when it can still answer), and no
+phone session is live (registered and delivering frames; any live session
+refuses the stop, because which listener a session's sockets reach is not
+recorded; a session that is only starting or reconnecting does not). It first sends `host:kill` where the server can
+still answer. It terminates only the exact process behind the listener OkuFlow
+reaches on `127.0.0.1` (the IPv4 loopback row; when there is none, the
+any-address row of that port, `0.0.0.0` or a dual-stack `::`), through a
+handle opened for that listener's owning process and
+re-verified (same PID and creation time as the identity observed when the
+decision was made, image file name `adb.exe`, not OkuFlow itself, still owning
+the listener), never by name, never a process tree. An endpoint set through
+`ADB_SERVER_SOCKET`, `ANDROID_ADB_SERVER_PORT` or `ANDROID_ADB_SERVER_ADDRESS`
+stays the user's: it is never shadowed, asked to exit or stopped. A responsive
+server serving other devices keeps running beside OkuFlow's private server, and
+Windows then says another program is using the phone's USB connection. If
+Windows denies termination (elevated or another user's server), the trace says
+so and the same sentence is shown. So it is for every other stop that does not
+end the server: a listener whose process cannot be opened (another user), an
+image other than `adb.exe` (vendor-renamed servers are left alone and never
+receive `host:kill`), and a changed identity or failure twice in a row. The
+refusal ends when the listener is gone, another process listens, or the
+phone is listed. `host:kill` itself goes out only after a fresh listing that
+succeeded, serves no other device and still does not list the phone, and
+after the same PID, creation time and `adb.exe` image checks (rechecked after
+connecting); termination does not repeat a `host:kill` already sent to that
+listener. The reviewed legacy OkuFlow bundle
+reclamation in docs/adb_distribution.md still runs first for a hung default.
+
+### Leftover OkuFlow instance (2026-11-17, iteration 2)
+
+This replaces the earlier rule that a windowless sibling instance is only
+reported. A real OkuFlow instance (a main window on the Windows platform;
+offscreen and test instances never register) creates the named events
+`Local\OkuFlow.Instance.<tag>.<pid>` and `Local\OkuFlow.Exiting.<tag>.<pid>`
+(the tag is a hash of its image path) and sets the second once its critical
+teardown is done (recording finalized, image writes, capture stopped, settings
+saved, its own adb stopped), not when it begins to exit. Another instance of
+the same image, user and session is a leftover when its exit signal has been
+set for 5 s and it still lives, or when it is registered, shows no window on
+two observations 20 s apart (above the longest bounded critical teardown,
+about 17 s) and the windows of its UI thread (the thread that owns its main
+window, recorded at registration; every top-level window when no thread is
+recorded) do not answer a window message within 1 s (a sibling with a visible
+window is not sent one). A hidden window of another thread decides nothing,
+and a recorded UI thread that owns no window at all proves nothing either (only
+the exit signal can then make it a leftover).
+Windows terminates that exact process once, and only while it plausibly
+holds the phone (the phone is listed by no server, the Windows ADB interface
+is present, the blind grace has passed), through a held handle (same PID,
+creation time and image path as this installation, no visible window at that
+moment), which ends its owned adb child through the job object. If the
+process cannot even be opened, nothing is stopped. If Windows refuses the
+termination, only that instance's own adb child is stopped while the instance
+is held open and still matches, when the child is proven (child of that PID,
+created after it, image this installation's `platform-tools\adb.exe`);
+otherwise the user is told another program is using the phone. Every wait
+here observes application shutdown. A sibling with a visible window is never
+terminated: after the 5 s blind grace the user is asked to close the other
+OkuFlow window. An unregistered windowless sibling (an older version or a
+test run) is named in the trace once, never terminated, and does not stop
+the blind ladder.
+Normal discovery and a fresh camera session follow every rung; recovered
+transport is not successful video delivery.
 Schema reference: [AOSP devices.proto](https://android.googlesource.com/platform/packages/modules/adb/+/7806e425e18a48a0f9e580e381cdc86ed5478a4c/proto/devices.proto).
 
 One control connection and one video connection form a session. A second
@@ -109,12 +333,48 @@ a token or touches an active session. The phone replies with one ACK and closes:
 the capability fields below plus `protocol`, `probe: true`, `busy` (another
 control session exists) and `problem` (current problem code or `null`). Hosts
 use it for discovery and back off while `busy` or `problem` is `hot`/`busy`/`blocked`.
+
+While the user has saved Pause, the camera service and its listener are stopped.
+Newer companions then bind a status-only listener on the same socket while the
+app process lives: a probe receives `{"protocol":1,"probe":true,"busy":false,
+"problem":"paused","cameras":[]}` and a control hello receives ERROR
+`{"code":"paused"}`. It never opens the camera or clears Pause. The listener
+belongs to the process, not to a screen: a supervisor started by the first
+component of the process keeps it bound every 500 ms while Pause is saved
+(retrying without a limit while the camera service still releases the socket)
+and closes it otherwise. A listener whose accept loop ends by itself reports
+its end and frees the socket name; the supervisor binds a new one on its next
+tick while Pause stays saved, so the computer keeps telling "paused" from "app
+not running". Resume closes it synchronously before the camera
+service can start and bind the socket; if Resume cannot be saved, it is bound
+again. Compatibility: older hosts treat the
+unknown `paused` code as "not ready" and never start; newer hosts with an older
+companion see an absent socket and use the read-only shell facts instead (a
+running app process with a refused socket is launched once per event and
+the user is asked to tap Resume streaming, never relaunched in a loop).
+
+A launch carrying the boolean extra `com.okuflow.camera.extra.HOST_LAUNCH`
+shows the activity over the lock screen and turns the screen on, so a locked
+phone on a stand can start the camera service from a resumed activity. A saved
+Pause disables this; leaving the activity clears both flags. Pause saved while
+the activity is shown over the lock screen (tapped in the activity) clears
+both flags at once, so the lock screen covers the activity and Resume needs an
+unlock; a later Resume never grants them again (only a new computer launch
+does). A host launch also
+clears an earlier foreground-service refusal (it may arrive through
+`onNewIntent` while the activity is already resumed, which produces no
+resume). A recreated activity (configuration change, or restore after the
+process was killed) is not a host launch: the extra of the original intent is
+dropped there. The read-only keyguard facts read `mShowingLockscreen` (Android
+9 and older), the KeyguardController's `mKeyguardShowing`/`KeyguardShowing`
+(Android 10 and later) and DeviceIdleController's `mScreenLocked` as a
+fallback; any one reporting true counts as locked.
 Capabilities are built once per listener (warmed in the background) and copied
 per reply.
 
 While the activity is resumed, it refreshes host/service state every three
 seconds. A disconnected `busy` or `failed` camera problem remains visible for
-at least 30 seconds, then clears to permit a fresh host attempt. A blocked
+at least 10 seconds (was 30), then clears to permit a fresh host attempt. A blocked
 camera clears after access returns; `noMode` clears after camera settings change.
 Thermal recovery remains tied to the actual thermal state. These transitions
 avoid a stale probe problem permanently preventing Windows from reconnecting.
@@ -154,7 +414,8 @@ truncation, invalid versions and lengths before allocating the payload.
 ERROR `code` is optional (older phones omit it; hosts treat absence as
 unclassified): `busy` camera held elsewhere, `blocked` policy/privacy/permission,
 `noMode` no compatible mode, `failed` other camera/encoder/service failure,
-`hot` thermal stop, `sessionBusy` another host holds the session. `error` stays
+`hot` thermal stop, `sessionBusy` another host holds the session, `paused` the
+user saved Pause (status-only listener). `error` stays
 free text for logs only; hosts must not parse it.
 
 Golden COMMAND vector for `{}`:

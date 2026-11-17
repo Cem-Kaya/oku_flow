@@ -1,0 +1,103 @@
+#include "okuflow/app/phone_link_text.hpp"
+
+namespace okuflow {
+
+namespace {
+const QString& Waiting()
+{
+    static const QString waiting = QStringLiteral("Waiting for phone…");
+    return waiting;
+}
+
+PhoneLinkText Sentence(PhoneLinkDiagnosis diagnosis, bool userMustAct)
+{
+    using D = PhoneLinkDiagnosis;
+    const QString waiting = Waiting();
+    const PhoneLinkText restoring{
+        QStringLiteral("Restoring USB connection…"),
+        QStringLiteral("OkuFlow is checking the USB connection and will reconnect automatically.")};
+    const QString allow = QStringLiteral(
+        "Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the "
+        "USB cable and plug it back in.");
+    const QString connect = QStringLiteral(
+        "Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.");
+    switch (diagnosis) {
+    case D::Connected:
+    case D::NotWanted:
+        return {};
+    case D::EndpointUnsupported:
+        return {waiting, QStringLiteral("Open OkuFlow Camera on the phone, connect the USB cable, and allow USB "
+                                        "debugging. OkuFlow checks the connection automatically.")};
+    case D::RestartRequired:
+        return {QStringLiteral("Camera did not stop in time. Restart OkuFlow before changing cameras."), {}};
+    case D::ServerStarting:
+    case D::ServerUnresponsive:
+    case D::NotListedByServer:
+    case D::Offline:
+    case D::TransportStalled:
+        return restoring;
+    case D::CompanionFailed:
+        // Camera busy in another phone app, failed or no mode, after a grace.
+        return userMustAct ? PhoneLinkText{waiting, QStringLiteral(
+            "The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera "
+            "again.")} : restoring;
+    case D::NoAdbInterface:
+        return {waiting, connect};
+    case D::WantedPhoneNotAttached:
+        // Another phone is listed, not the chosen one (a ready other phone is
+        // used automatically; one that is not ready yet gets this sentence).
+        return {waiting, QStringLiteral("A different phone is connected. Connect the phone you chose in OkuFlow, or "
+                                        "choose the connected phone under Settings, Camera.")};
+    case D::Unauthorized:
+        return {waiting, allow};
+    case D::Authorizing:
+        // The Allow handshake of every normal re-plug reads "Restoring"
+        // until it lasts longer than the short grace.
+        return userMustAct ? PhoneLinkText{waiting, allow} : restoring;
+    case D::PhoneLocked:
+        return userMustAct ? PhoneLinkText{waiting, QStringLiteral("Unlock your phone.")} : restoring;
+    case D::AppNotRunning:
+        return userMustAct ? PhoneLinkText{waiting, QStringLiteral("Open OkuFlow Camera on the phone.")} : restoring;
+    case D::AppNotInstalled:
+        return {waiting, QStringLiteral("Install OkuFlow Camera on the phone.")};
+    case D::CompanionPaused:
+        return {waiting, QStringLiteral("On the phone, open OkuFlow Camera and tap Resume streaming.")};
+    case D::CompanionListenerClosed:
+        // The app process runs but its listener refuses: paused (the
+        // companion installed today answers nothing while paused), or a
+        // camera service that did not start. Right in both cases.
+        return {waiting, QStringLiteral("On the phone, open OkuFlow Camera. If it shows that streaming is paused, "
+                                        "tap Resume streaming.")};
+    case D::CompanionNotResponding:
+        return {waiting, QStringLiteral("OkuFlow Camera is not responding on the phone. Close it on the phone and "
+                                        "open it again.")};
+    case D::ReplugCable:
+        return {waiting, QStringLiteral("Unplug the phone's USB cable and plug it back in.")};
+    case D::AdbCannotStart:
+        return {waiting, QStringLiteral("OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or "
+                                        "allow it in your antivirus program.")};
+    case D::CompanionBusyOtherHost:
+        return {waiting, QStringLiteral("Another computer or program is using the phone camera.")};
+    case D::CompanionBlocked:
+        return {waiting, QStringLiteral("Camera access is blocked on the phone.")};
+    case D::CompanionHot:
+        return {waiting, QStringLiteral("The phone is too hot. Let it cool down.")};
+    case D::OtherInstanceHoldsPhone:
+        return {waiting, QStringLiteral("Another OkuFlow window is using the phone. Close it to use the phone here.")};
+    case D::OtherProgramHoldsPhone:
+        return {waiting, QStringLiteral("Another program is using the phone's USB connection. Close it or restart "
+                                        "the computer.")};
+    }
+    return restoring;
+}
+} // namespace
+
+PhoneLinkText PhoneLinkPlaceholderText(PhoneLinkDiagnosis diagnosis, bool userMustAct)
+{
+    auto text = Sentence(diagnosis, userMustAct);
+    if (!text.title.isEmpty())
+        text.spoken = text.title == Waiting() && !text.detail.isEmpty() ? text.detail : text.title;
+    return text;
+}
+
+} // namespace okuflow

@@ -3761,5 +3761,73 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Formula could not be read. The original image is unchanged.</source>
         <translation>ไม่สามารถอ่านสูตรได้ ภาพต้นฉบับไม่เปลี่ยนแปลง</translation>
     </message>
+    <message>
+        <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
+        <translation>เชื่อมต่อโทรศัพท์ผ่าน USB แล้วเลือก ถ่ายโอนไฟล์ บนโทรศัพท์และเปิดการแก้ไขข้อบกพร่อง USB</translation>
+    </message>
+    <message>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>ปลดล็อกโทรศัพท์แล้วแตะ อนุญาต ในคำถามเรื่องการแก้ไขข้อบกพร่อง USB หากไม่มีคำถามปรากฏขึ้น ให้ถอดสาย USB แล้วเสียบกลับเข้าไปใหม่</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>OkuFlow กล้อง ไม่ตอบสนองบนโทรศัพท์ ปิดแอปบนโทรศัพท์แล้วเปิดใหม่อีกครั้ง</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>ถอดสาย USB ของโทรศัพท์แล้วเสียบกลับเข้าไปใหม่</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow ไม่สามารถเริ่มการเชื่อมต่อโทรศัพท์ผ่าน USB ได้ ติดตั้ง OkuFlow ใหม่ หรืออนุญาต OkuFlow ในโปรแกรมป้องกันไวรัสของคุณ</translation>
+    </message>
+    <message>
+        <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>
+        <translation>ไม่สามารถเริ่มกล้องของโทรศัพท์ได้ ปิดแอปกล้องอื่นๆ บนโทรศัพท์ แล้วเปิด OkuFlow กล้อง อีกครั้ง</translation>
+    </message>
+    <message>
+        <source>A different phone is connected. Connect the phone you chose in OkuFlow, or choose the connected phone under Settings, Camera.</source>
+        <translation>มีโทรศัพท์เครื่องอื่นเชื่อมต่ออยู่ เชื่อมต่อโทรศัพท์ที่คุณเลือกไว้ใน OkuFlow หรือเลือกโทรศัพท์ที่เชื่อมต่ออยู่ภายใต้การตั้งค่า กล้อง</translation>
+    </message>
+    <message>
+        <source>Unlock your phone.</source>
+        <translation>ปลดล็อกโทรศัพท์ของคุณ</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone.</source>
+        <translation>เปิด OkuFlow กล้อง บนโทรศัพท์</translation>
+    </message>
+    <message>
+        <source>Install OkuFlow Camera on the phone.</source>
+        <translation>ติดตั้ง OkuFlow กล้อง บนโทรศัพท์</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera and tap Resume streaming.</source>
+        <translation>บนโทรศัพท์ ให้เปิด OkuFlow กล้อง แล้วแตะ ดำเนินการสตรีมต่อ</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming.</source>
+        <translation>บนโทรศัพท์ ให้เปิด OkuFlow กล้อง หากแสดงว่าการสตรีมหยุดชั่วคราว ให้แตะ ดำเนินการสตรีมต่อ</translation>
+    </message>
+    <message>
+        <source>Another computer or program is using the phone camera.</source>
+        <translation>คอมพิวเตอร์หรือโปรแกรมอื่นกำลังใช้กล้องของโทรศัพท์</translation>
+    </message>
+    <message>
+        <source>Camera access is blocked on the phone.</source>
+        <translation>การเข้าถึงกล้องถูกบล็อกบนโทรศัพท์</translation>
+    </message>
+    <message>
+        <source>The phone is too hot. Let it cool down.</source>
+        <translation>โทรศัพท์ร้อนเกินไป โปรดรอให้เย็นลง</translation>
+    </message>
+    <message>
+        <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
+        <translation>หน้าต่าง OkuFlow อื่นกำลังใช้โทรศัพท์ ปิดหน้าต่างนั้นเพื่อใช้โทรศัพท์ที่นี่</translation>
+    </message>
+    <message>
+        <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
+        <translation>โปรแกรมอื่นกำลังใช้การเชื่อมต่อ USB ของโทรศัพท์ ปิดโปรแกรมนั้นหรือรีสตาร์ตคอมพิวเตอร์</translation>
+    </message>
 </context>
 </TS>

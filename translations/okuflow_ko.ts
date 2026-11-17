@@ -3761,5 +3761,73 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <source>Formula could not be read. The original image is unchanged.</source>
         <translation>수식을 읽을 수 없습니다. 원본 이미지는 변경되지 않았습니다.</translation>
     </message>
+    <message>
+        <source>Connect the phone by USB, then choose File transfer and turn on USB debugging on the phone.</source>
+        <translation>휴대폰을 USB로 연결한 다음 휴대폰에서 파일 전송을 선택하고 USB 디버깅을 켜세요.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone and tap Allow on the USB debugging question. If no question appears, unplug the USB cable and plug it back in.</source>
+        <translation>휴대폰 잠금을 해제하고 USB 디버깅 확인 창에서 허용을 탭하세요. 확인 창이 나타나지 않으면 USB 케이블을 뽑았다가 다시 연결하세요.</translation>
+    </message>
+    <message>
+        <source>OkuFlow Camera is not responding on the phone. Close it on the phone and open it again.</source>
+        <translation>휴대폰에서 OkuFlow 카메라가 응답하지 않습니다. 휴대폰에서 앱을 닫았다가 다시 여세요.</translation>
+    </message>
+    <message>
+        <source>Unplug the phone's USB cable and plug it back in.</source>
+        <translation>휴대폰의 USB 케이블을 뽑았다가 다시 연결하세요.</translation>
+    </message>
+    <message>
+        <source>OkuFlow cannot start its USB phone connection. Reinstall OkuFlow, or allow it in your antivirus program.</source>
+        <translation>OkuFlow가 USB 휴대폰 연결을 시작할 수 없습니다. OkuFlow를 다시 설치하거나 백신 프로그램에서 허용하세요.</translation>
+    </message>
+    <message>
+        <source>The phone camera could not start. Close other camera apps on the phone, then open OkuFlow Camera again.</source>
+        <translation>휴대폰 카메라를 시작할 수 없습니다. 휴대폰에서 다른 카메라 앱을 닫은 다음 OkuFlow 카메라를 다시 여세요.</translation>
+    </message>
+    <message>
+        <source>A different phone is connected. Connect the phone you chose in OkuFlow, or choose the connected phone under Settings, Camera.</source>
+        <translation>다른 휴대폰이 연결되어 있습니다. OkuFlow에서 선택한 휴대폰을 연결하거나 설정, 카메라에서 연결된 휴대폰을 선택하세요.</translation>
+    </message>
+    <message>
+        <source>Unlock your phone.</source>
+        <translation>휴대폰 잠금을 해제하세요.</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone.</source>
+        <translation>휴대폰에서 OkuFlow 카메라를 여세요.</translation>
+    </message>
+    <message>
+        <source>Install OkuFlow Camera on the phone.</source>
+        <translation>휴대폰에 OkuFlow 카메라를 설치하세요.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera and tap Resume streaming.</source>
+        <translation>휴대폰에서 OkuFlow 카메라를 열고 스트리밍 재개를 탭하세요.</translation>
+    </message>
+    <message>
+        <source>On the phone, open OkuFlow Camera. If it shows that streaming is paused, tap Resume streaming.</source>
+        <translation>휴대폰에서 OkuFlow 카메라를 여세요. 스트리밍이 일시 중지되었다고 표시되면 스트리밍 재개를 탭하세요.</translation>
+    </message>
+    <message>
+        <source>Another computer or program is using the phone camera.</source>
+        <translation>다른 컴퓨터나 프로그램이 휴대폰 카메라를 사용하고 있습니다.</translation>
+    </message>
+    <message>
+        <source>Camera access is blocked on the phone.</source>
+        <translation>휴대폰에서 카메라 접근이 차단되어 있습니다.</translation>
+    </message>
+    <message>
+        <source>The phone is too hot. Let it cool down.</source>
+        <translation>휴대폰이 너무 뜨겁습니다. 식을 때까지 기다리세요.</translation>
+    </message>
+    <message>
+        <source>Another OkuFlow window is using the phone. Close it to use the phone here.</source>
+        <translation>다른 OkuFlow 창이 휴대폰을 사용하고 있습니다. 여기에서 사용하려면 그 창을 닫으세요.</translation>
+    </message>
+    <message>
+        <source>Another program is using the phone's USB connection. Close it or restart the computer.</source>
+        <translation>다른 프로그램이 휴대폰의 USB 연결을 사용하고 있습니다. 그 프로그램을 닫거나 컴퓨터를 다시 시작하세요.</translation>
+    </message>
 </context>
 </TS>

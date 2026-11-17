@@ -2,8 +2,10 @@
 #include "okuflow/capture/media_capture.hpp"
 #include "okuflow/capture/phone_camera.hpp"
 #include "../src/capture/media_capture_session.hpp"
+#include "phone_adb_test_guard.hpp"
 
 #include <QtTest/QtTest>
+#include <QScopeGuard>
 #include <wrl/implements.h>
 #include <atomic>
 #include <future>
@@ -147,6 +149,26 @@ struct ReadbackFixture {
 class CaptureShutdownTests : public QObject {
     Q_OBJECT
 private slots:
+    // Iteration 7 (4): this target links phone_camera.cpp; no test of it can
+    // reach the machine's default adb port (see phone_adb_test_guard.hpp).
+    void initTestCase() { okuflow_test::UseClosedAdbPort(); }
+    void phoneCodeReachesOnlyTheClosedAdbPort()
+    {
+        // ADB_SERVER_SOCKET names a decoy listener, so even without hooks
+        // (as when this row fails) discovery goes there, never to port 5037.
+        okuflow_test::LoopbackListener decoy;
+        QVERIFY(decoy.Listening());
+        qputenv("ADB_SERVER_SOCKET", QByteArray("tcp:127.0.0.1:") + QByteArray::number(decoy.Port()));
+        auto restore = qScopeGuard([] { qunsetenv("ADB_SERVER_SOCKET"); });
+        okuflow_test::LoopbackListener closed(okuflow_test::ClosedAdbPort());
+        QVERIFY(closed.Listening());
+        bool listed = false;
+        okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed, {}, nullptr,
+                                                 okuflow::PhoneServerIntent::BorrowOnly);
+        QVERIFY(closed.Accepted(1000));
+        QVERIFY(!decoy.Accepted(0));
+        QVERIFY(!listed);
+    }
     void stalledReadIsDetectedOnceWithoutBlockingOrLateDelivery()
     {
         using Access = okuflow::CaptureReadbackTestAccess;

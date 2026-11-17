@@ -563,6 +563,9 @@ void OkuFlowApp::OpenVideoFile(const QString& path)
     if (cameraStartupPending_) StopCameraCapture();
     auto& doc = *videoDocument_;
     doc.pendingOpenPath = NormalizedVideoPath(path); // newest request owns completion
+    // A link ladder already running for the phone loses its authority now
+    // (computed after the change: the file is requested from here on).
+    RefreshPhoneIntentGeneration();
     if (recordingManager_) {
         const auto current = recordingManager_->CurrentSessionInfo();
         if (current) {

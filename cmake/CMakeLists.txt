@@ -203,6 +203,7 @@ if (WIN32)
         Qt6::Network
         Qt6::Pdf
         iphlpapi
+        setupapi
         ws2_32
         d3d11
         d3d12
