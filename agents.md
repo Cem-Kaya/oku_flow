@@ -558,7 +558,7 @@ aligned with the project goals.
   (`ReserveLaunch`), never from a timer of their own. A listener refusal
   within `launchSettleMs` of OkuFlow's own launch holds nothing, and a hold
   ends when the app process is gone: relaunched at once the first time in an
-  episode, later at `launchPeriodicMs` after the last launch (Pause survives
+  episode (spent only by a decision that actually launches), later at `launchPeriodicMs` after the last launch (Pause survives
   a kill, so an app a battery manager keeps killing is not pulled forward
   every time).
 - Every stuck state ends somewhere, also on a server OkuFlow does not own: a

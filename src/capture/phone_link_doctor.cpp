@@ -425,11 +425,13 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         // listener that hung) no longer applies. The first such release in
         // an episode relaunches at once; later ones wait the periodic launch
         // spacing after the last launch, so a paused app that a battery
-        // manager keeps killing is not pulled to the front every time.
+        // manager keeps killing is not pulled to the front every time. The
+        // immediate relaunch is spent only by a decision that launches.
+        const bool firstDeathRelease = launchHeld_ && o.shell.appRunning == PhoneFact::No && !holdReleasedByDeath_;
+        const std::int64_t heldNextAllowedMs = launch_.nextAllowedMs;
         if (launchHeld_ && o.shell.appRunning == PhoneFact::No) {
             launchHeld_ = false;
-            if (!holdReleasedByDeath_) {
-                holdReleasedByDeath_ = true;
+            if (firstDeathRelease) {
                 launch_.nextAllowedMs = std::min(launch_.nextAllowedMs, nowMs);
             } else if (lastLaunchMs_ >= 0) {
                 launch_.nextAllowedMs = std::max(launch_.nextAllowedMs, lastLaunchMs_ + policy_.launchPeriodicMs);
@@ -442,10 +444,14 @@ PhoneLinkAction PhoneLinkDoctor::LadderFor(PhoneLinkDiagnosis diagnosis, const P
         // once while its listener was closed and now hangs).
         if (hanging && (launch_.attempts >= policy_.hangingCompanionLaunches || launchHeld_)) {
             launchHeld_ = true;
+            if (firstDeathRelease) launch_.nextAllowedMs = heldNextAllowedMs; // Nothing launched.
             *raised = D::CompanionNotResponding;
             return A::WaitForUser;
         }
-        if (ReserveLaunch(nowMs)) return A::WakeAndLaunchApp;
+        if (ReserveLaunch(nowMs)) {
+            if (firstDeathRelease) holdReleasedByDeath_ = true;
+            return A::WakeAndLaunchApp;
+        }
         return launch_.attempts >= 2 || launchHeld_ ? A::WaitForUser : A::Relist;
     }
     case D::CompanionListenerClosed:

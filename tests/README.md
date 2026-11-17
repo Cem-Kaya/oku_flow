@@ -1103,7 +1103,10 @@ not "own server recovering", and a new hang meets a private server at once),
 a blind default with no executable yet, hand-over cap 1: started once the
 executable appears) and `handOverCountedAfterAnEventIsDropped` (hook
 `afterPrivateServerRetiredForTest` raises an event during the ladder's
-hand-back; cap 1) with the doctor row `handOverOfAnEarlierEpisodeIsDropped`. Doctor rows
+hand-back; cap 1) with the doctor row `handOverOfAnEarlierEpisodeIsDropped`. Doctor row
+`deathWithAHangingListenerKeepsTheImmediateRelaunch`: a decision in which the app
+process is gone and the listener hangs does not spend the episode's immediate
+relaunch. Doctor rows
 `userEndpointThatDoesNotListThePhoneEndsInTheReplugSentence` and
 `hungUserEndpointEndsInTheReplugSentence`; `overriddenEndpointIsNeverStopped`
 was changed deliberately (WaitForUser is now allowed; no takeover action).

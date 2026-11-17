@@ -705,6 +705,35 @@ private slots:
         }
         QCOMPARE(int(last.action), int(A::StartShadowServer));
     }
+    void deathWithAHangingListenerKeepsTheImmediateRelaunch()
+    {
+        // Iteration 6 (6): in one decision the app process is gone (which
+        // releases the hold) and the listener still hangs (which holds again
+        // without launching). The once-per-episode immediate relaunch is not
+        // spent there: the next decision with the app dead launches at once.
+        PhoneLinkDoctor doctor;
+        doctor.OnEvent(PhoneLinkEvent::AppStart, 0);
+        const auto notRunning = With([](auto& o) {
+            o.companion = PhoneCompanionProbe::Refused;
+            o.shell = {PhoneFact::Yes, PhoneFact::No, PhoneFact::Yes, PhoneFact::No}; });
+        auto closed = notRunning;
+        closed.shell.appRunning = PhoneFact::Yes;
+        auto deadAndHanging = notRunning;
+        deadAndHanging.companion = PhoneCompanionProbe::TimedOut;
+        deadAndHanging.adbd = PhoneAdbdHealth::Answers;
+        QCOMPARE(int(doctor.Decide(notRunning, 0).action), int(A::WakeAndLaunchApp));
+        QCOMPARE(int(doctor.Decide(notRunning, 3000).action), int(A::WakeAndLaunchApp));
+        QCOMPARE(int(doctor.Decide(closed, 9000).action), int(A::WaitForUser)); // Held.
+        const auto both = doctor.Decide(deadAndHanging, 10000);
+        QCOMPARE(int(both.diagnosis), int(D::CompanionNotResponding));
+        QCOMPARE(int(both.action), int(A::WaitForUser));
+        QCOMPARE(int(doctor.Decide(notRunning, 11000).action), int(A::WakeAndLaunchApp));
+        // That launch spent it: a second death in the episode waits the
+        // periodic spacing after the last launch.
+        QCOMPARE(int(doctor.Decide(closed, 17000).action), int(A::WaitForUser));
+        QVERIFY(doctor.Decide(notRunning, 18000).action != A::WakeAndLaunchApp);
+        QCOMPARE(int(doctor.Decide(notRunning, 11000 + doctor.Policy().launchPeriodicMs).action), int(A::WakeAndLaunchApp));
+    }
     void handOverOfAnEarlierEpisodeIsDropped()
     {
         // Iteration 6 (5): a start beside the default or a hand-back noted
