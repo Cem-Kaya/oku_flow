@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-18
+
 - The bundled adb is rebuilt from the same adb 37.0.0 source as build
   `37.0.0-okuflow.2`, with current MSYS2 runtime libraries. The build recipe
   now pins the whole MSYS2 toolchain as hash-checked packages and no longer
