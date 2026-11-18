@@ -10,7 +10,7 @@ starts, replaces or stops an adb server. See docs/adb_distribution.md.
 #>
 [CmdletBinding()]
 param(
-    [string]$BuildRoot = (Join-Path $env:LOCALAPPDATA 'OkuFlow\adb-source-build'),
+    [ValidateNotNullOrEmpty()][string]$BuildRoot = (Join-Path $env:LOCALAPPDATA 'OkuFlow\adb-source-build'),
     [string]$MsysRoot,
     [string]$InputDirectory,
     [switch]$SkipToolchainSetup
@@ -18,14 +18,19 @@ param(
 $ErrorActionPreference = 'Stop'
 $recipeRoot = Join-Path $PSScriptRoot 'adb-source'
 $pins = Get-Content (Join-Path $recipeRoot 'pins.json') -Raw | ConvertFrom-Json
-$BuildRoot = [IO.Path]::GetFullPath([IO.Path]::Combine((Get-Location).ProviderPath, $BuildRoot))
-# An MSYS2 package script split, and CMake's compiler check failed on, a build
-# root containing spaces and '&' (2026-11-18); refuse such a path before
-# downloading anything.
-if ($BuildRoot -match '[ &]') {
-    throw "Build root '$BuildRoot' contains a space or '&'; pass -BuildRoot with a plain path such as C:\adb-build."
+function Resolve-PlainRoot([string]$Path, [string]$Name) {
+    # Relative paths resolve against the PowerShell location. An MSYS2 package
+    # script split, and CMake's compiler check failed on, a root with spaces and
+    # '&' (2026-11-18), so only plain ASCII paths are accepted, before anything
+    # is downloaded or created.
+    $full = [IO.Path]::GetFullPath($PSCmdlet.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)).TrimEnd('\')
+    if ($full -cnotmatch '^[A-Za-z]:(\\[A-Za-z0-9_.-]+)+$') {
+        throw "$Name '$full' must be a plain path of ASCII letters, digits, '_', '.' and '-', such as C:\adb-build; pass -$Name."
+    }
+    return $full
 }
-if (-not $MsysRoot) { $MsysRoot = Join-Path $BuildRoot 'msys64' }
+$BuildRoot = Resolve-PlainRoot $BuildRoot 'BuildRoot'
+$MsysRoot = if ($MsysRoot) { Resolve-PlainRoot $MsysRoot 'MsysRoot' } else { Join-Path $BuildRoot 'msys64' }
 New-Item -ItemType Directory -Path $BuildRoot -Force | Out-Null
 $inputs = Join-Path $BuildRoot 'inputs'
 New-Item -ItemType Directory -Path $inputs -Force | Out-Null
@@ -80,7 +85,6 @@ if (Test-Path -LiteralPath $marker) {
 } elseif (Test-Path -LiteralPath $prepared) {
     throw 'Unmarked prepared source already exists; choose a fresh -BuildRoot.'
 }
-$MsysRoot = [IO.Path]::GetFullPath($MsysRoot).TrimEnd('\')
 $bash = Join-Path $MsysRoot 'usr\bin\bash.exe'
 if (-not (Test-Path -LiteralPath $bash)) {
     if ($MsysRoot -ne (Join-Path $BuildRoot 'msys64')) {
@@ -110,7 +114,7 @@ try {
         if ($firstRepository -eq 0) { throw 'Unrecognized MSYS2 pacman.conf.' }
         Set-Content -LiteralPath (Join-Path $BuildRoot 'pacman-offline.conf') -Value $conf[0..($firstRepository - 1)] -Encoding ascii
         # Paths relative to the build root: bash adds the root it received as
-        # UTF-16 environment, so a non-ASCII user profile path stays intact.
+        # environment, so the path never passes through console output decoding.
         $relativePaths = @($packageFiles | ForEach-Object {
             $_.Substring($BuildRoot.Length).TrimStart('\').Replace('\', '/') })
         [IO.File]::WriteAllText((Join-Path $BuildRoot 'pinned-packages.txt'), (($relativePaths -join "`n") + "`n"),

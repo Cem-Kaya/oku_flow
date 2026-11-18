@@ -19,9 +19,15 @@ scripts/build_release_bundle.bat
 
 The build creates an isolated MSYS2 UCRT64 installation under
 `%LOCALAPPDATA%/OkuFlow/adb-source-build`; by default it does not modify a
-user's MSYS2. The build root must not contain a space or `&` (MSYS2 package
-scripts and CMake's compiler check fail there); the script refuses such a path,
-so a profile like `C:\Users\R&D` needs `-BuildRoot`.
+user's MSYS2. The build root and `-MsysRoot` must be plain ASCII paths of
+letters, digits, `_`, `.` and `-` (an MSYS2 package script and CMake's compiler
+check failed under a path with spaces and `&`); the script refuses other paths
+before downloading anything, so a profile like `C:\Users\R&D` or
+`C:\Users\Müller` needs `-BuildRoot C:\adb-build`. The later steps then need the
+same location: `test_adb_source_build.ps1 -RuntimePath
+<root>\build-output\platform-tools`, `OKUFLOW_PLATFORM_TOOLS_DIR=<root>\build-output`
+(or `stage_platform_tools.ps1 -SourcePath`) for the bundle, and
+`prepare_ffmpeg_playback.ps1 -MsysRoot <root>\msys64`.
 It installs the pinned MSYS2 base and then only the pinned toolchain and
 dependency package files, in one local `pacman -U` transaction; it never reads
 the rolling package repository, so a later MSYS2 update cannot change or break
@@ -34,10 +40,10 @@ it, which can upgrade or downgrade packages already there. With
 `-SkipToolchainSetup` no toolchain package is downloaded and no package is
 installed (missing source inputs and, for a new build root, the MSYS2 base are
 still fetched); the installed dependency packages must then be exactly the
-pinned versions. That suits a GCC 16.2.0-7 toolchain: install the source
-ZIP's `inputs/*.pkg.tar.zst` with `pacman --config <repository-free conf> -U`
-(a full run writes one as `pacman-offline.conf` in its build root), so pacman
-does not fetch other packages from the rolling repository. Validated GCC
+pinned versions. This assumes a GCC 16.2.0-7 toolchain: install the source
+ZIP's `inputs/*.pkg.tar.zst` with `pacman --config <conf> -U`, where `<conf>` is
+a copy of `pacman.conf` holding only its `[options]` section (a full run writes
+one as `pacman-offline.conf`), so nothing comes from the rolling repository. Validated GCC
 is 16.2.0; the script rejects a different compiler.
 Prepared source is retained, never silently discarded.
 

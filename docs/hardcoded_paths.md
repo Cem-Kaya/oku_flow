@@ -1156,7 +1156,7 @@ Update this file whenever these defaults move or new fixed paths are introduced.
   Legacy bundle reclamation accepts the `adb-build.json` SHA-256 of each
   reviewed build: `f91532bab5d146a1dd0dc646629afb8ce77a626c0cde0b015e71c8dfcbb00b1c`
   (`37.0.0-okuflow.1`) and
-  `db60c0f0b57ded03647962792902525e92bfa98689c372555fbbad1bedfbb3e2`
+  `5013a1223c0c64b9b8fca81480d14f808df1a83c1589014443d7b9ec2f75797a`
   (`37.0.0-okuflow.2`, same as `scripts/adb-source/distribution.json`; a test
   keeps the two equal). It also pins the public v0.2.3 launcher
   SHA-256 `8bff15f54bfe5111762cda157a3df9d9716f549b3c0bf2d9f612100ccc288b1d`
@@ -1180,7 +1180,8 @@ Update this file whenever these defaults move or new fixed paths are introduced.
   it. Permission, busy and thermal probe problems wait for phone-state changes
   instead of forcing foreground.
 - Source builds use `%LOCALAPPDATA%/OkuFlow/adb-source-build` by default;
-  `scripts/build_adb_from_source.ps1 -BuildRoot` selects another local root.
+  `scripts/build_adb_from_source.ps1 -BuildRoot` selects another local root;
+  build and MSYS2 roots must be plain ASCII paths (no spaces, `&` or accents).
   Inputs, the MSYS2 toolchain packages and GCC 16.2.0 are pinned in
   `scripts/adb-source/pins.json`.
 - Staging uses `-SourcePath`, `OKUFLOW_PLATFORM_TOOLS_DIR`, or the default
