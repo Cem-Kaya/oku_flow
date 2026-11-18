@@ -221,7 +221,7 @@ LegacyAdbRecoveryRequest MakeRequest(quint16 port, const Distribution& distribut
     request.externallyConfirmedUnresponsive = true;
     request.phoneUseIntent = true;
     request.noActiveOrStartingPhoneSessions = true;
-    request.expectations.reviewedManifestSha256 = distribution.manifestSha256;
+    request.expectations.reviewedManifestSha256 = {distribution.manifestSha256};
     request.expectations.expectedLauncherProductName = FixtureProductName();
     request.expectations.requiredDistributionRoot =
         QDir::toNativeSeparators(QFileInfo(requiredRoot).canonicalFilePath()).toStdWString();
@@ -433,13 +433,61 @@ private slots:
         }
         auto request = MakeRequest(server->ready.port, distribution, requiredRoot);
         if (mismatch == 0)
-            request.expectations.reviewedManifestSha256 = std::string(64, '0');
+            request.expectations.reviewedManifestSha256 = {std::string(64, '0')};
         if (mismatch == 2)
             request.expectations.expectedLauncherProductName = L"Not The Fixture Product";
         const auto result = TryReclaimLegacyBundledAdbServer(request);
         QCOMPARE(result.status, LegacyAdbRecoveryStatus::NotManaged);
         QCOMPARE(static_cast<int>(result.detail), expectedDetail);
         QVERIFY(server->Alive());
+    }
+
+    void manifestPinAllowlist_data()
+    {
+        QTest::addColumn<int>("pinMode"); // 0 among several, 1 empty, 2 malformed
+        QTest::addColumn<int>("expectedStatus");
+        QTest::addColumn<int>("expectedDetail");
+        QTest::newRow("older-and-current-pins") << 0
+            << static_cast<int>(LegacyAdbRecoveryStatus::Recovered)
+            << static_cast<int>(LegacyAdbRecoveryDetail::None);
+        QTest::newRow("empty-allowlist-fails-closed") << 1
+            << static_cast<int>(LegacyAdbRecoveryStatus::Failed)
+            << static_cast<int>(LegacyAdbRecoveryDetail::ManifestInvalid);
+        QTest::newRow("malformed-entry-fails-closed") << 2
+            << static_cast<int>(LegacyAdbRecoveryStatus::Failed)
+            << static_cast<int>(LegacyAdbRecoveryDetail::ManifestInvalid);
+    }
+
+    void manifestPinAllowlist()
+    {
+        QFETCH(int, pinMode);
+        QFETCH(int, expectedStatus);
+        QFETCH(int, expectedDetail);
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        const Distribution distribution = BuildDistribution(temp.path(), false);
+        auto server = StartServer(distribution,
+                                  QDir(temp.path()).filePath(QStringLiteral("ready.txt")),
+                                  QStringLiteral("ok"));
+        QVERIFY(server);
+        auto request = MakeRequest(server->ready.port, distribution, temp.path());
+        if (pinMode == 0)
+            request.expectations.reviewedManifestSha256 = {std::string(64, '0'),
+                                                           distribution.manifestSha256};
+        else if (pinMode == 1)
+            request.expectations.reviewedManifestSha256.clear();
+        else
+            request.expectations.reviewedManifestSha256 = {distribution.manifestSha256, "not-hex"};
+        const auto result = TryReclaimLegacyBundledAdbServer(request);
+        QCOMPARE(static_cast<int>(result.status), expectedStatus);
+        QCOMPARE(static_cast<int>(result.detail), expectedDetail);
+        if (expectedStatus == static_cast<int>(LegacyAdbRecoveryStatus::Recovered)) {
+            QVERIFY(result.stoppedViaHostKill);
+            QVERIFY(WaitProcessExited(server->ready.pid));
+        } else {
+            QVERIFY(!result.hostKillDelivered);
+            QVERIFY(server->Alive());
+        }
     }
 
     void launcherHashAllowlistFallback_data()

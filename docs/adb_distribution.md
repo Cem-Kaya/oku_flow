@@ -19,15 +19,23 @@ scripts/build_release_bundle.bat
 
 The build creates an isolated MSYS2 UCRT64 installation under
 `%LOCALAPPDATA%/OkuFlow/adb-source-build`; it does not modify a user's MSYS2.
-Initial toolchain installation needs internet. `-BuildRoot` selects another
-local directory and `-MsysRoot` accepts an existing compatible toolchain.
-Validated GCC is 16.2.0; the script rejects a different compiler for review.
+It installs the pinned MSYS2 base and then only the pinned toolchain and
+dependency package files, in one local `pacman -U` transaction; it never reads
+the rolling package repository, so a later MSYS2 update cannot change or break
+the build. Downloading those packages needs internet once. `-BuildRoot` selects
+another local directory and `-MsysRoot` accepts an existing MSYS2 installation,
+into which the same pinned packages are installed unless `-SkipToolchainSetup`
+is given. Validated GCC is 16.2.0; the script rejects a different compiler.
 Prepared source is retained, never silently discarded.
 
 `scripts/adb-source/pins.json` records SHA-256 values and immutable source/patch
 URLs: android-tools 37.0.0, AOSP Windows USB API sources, five MSYS2 Windows
-patches and the protobuf 36 compatibility patch, plus exact UCRT64 dependency
-package archives. The script builds only the adb target, with bundled libusb,
+patches and the protobuf 36 compatibility patch, exact UCRT64 dependency
+package archives (`inputs`) and every build-tool package (`toolchain`: GCC,
+binutils, CMake, Ninja, NASM, pkgconf, patch, the GoogleTest headers adb's zip code includes, and their dependencies). To move
+to newer packages, resolve the same package set in a fresh copy of the pinned
+MSYS2 base, download it with `pacman -Sw` (which checks the MSYS2 signatures),
+record the new hashes, rebuild and review the output as described below. The script builds only the adb target, with bundled libusb,
 external dependency libraries and wireless mDNS disabled. MSVC 2022 builds
 AdbWinApi.dll and AdbWinUsbApi.dll from source. PE import traversal copies the
 complete runtime closure; this source build needs more than three binaries.

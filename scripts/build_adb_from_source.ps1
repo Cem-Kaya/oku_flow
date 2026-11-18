@@ -24,8 +24,8 @@ New-Item -ItemType Directory -Path $BuildRoot -Force | Out-Null
 $inputs = Join-Path $BuildRoot 'inputs'
 New-Item -ItemType Directory -Path $inputs -Force | Out-Null
 
-function Get-VerifiedInput([string]$Name, [string]$Url, [string]$Sha256) {
-    $path = Join-Path $inputs $Name
+function Get-VerifiedInput([string]$Name, [string]$Url, [string]$Sha256, [string]$Directory = $inputs) {
+    $path = Join-Path $Directory $Name
     if (-not (Test-Path -LiteralPath $path)) {
         $supplied = if ($InputDirectory) { Join-Path $InputDirectory $Name } else { '' }
         if ($supplied -and (Test-Path -LiteralPath $supplied)) {
@@ -39,6 +39,13 @@ function Get-VerifiedInput([string]$Name, [string]$Url, [string]$Sha256) {
 }
 foreach ($input in $pins.inputs) {
     [void](Get-VerifiedInput $input.name $input.url $input.sha256)
+}
+# The build tools are pinned like the sources: a rolling MSYS2 update would
+# otherwise replace them and clash with the pinned dependency packages.
+$toolchain = Join-Path $BuildRoot 'toolchain'
+New-Item -ItemType Directory -Path $toolchain -Force | Out-Null
+foreach ($package in $pins.toolchain) {
+    [void](Get-VerifiedInput $package.name $package.url $package.sha256 $toolchain)
 }
 $bash = Join-Path $MsysRoot 'usr\bin\bash.exe'
 if (-not (Test-Path -LiteralPath $bash)) {
@@ -57,13 +64,10 @@ $env:CHERE_INVOKING = '1'
 $env:OKUFLOW_ADB_BUILD_ROOT = $BuildRoot
 try {
     if (-not $SkipToolchainSetup) {
-        # The first update may close MSYS2 to finish updating its runtime.
-        & $bash -lc 'pacman -Syu --noconfirm'
-        if ($LASTEXITCODE -ne 0) { throw 'MSYS2 runtime update failed.' }
-        & $bash -lc 'pacman -Syu --noconfirm && pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-nasm mingw-w64-ucrt-x86_64-pkgconf patch git'
-        if ($LASTEXITCODE -ne 0) { throw 'MSYS2 build-tool installation failed.' }
-        & $bash -lc 'root="$(cygpath -u "$OKUFLOW_ADB_BUILD_ROOT")"; pacman -U --needed --noconfirm "$root"/inputs/*.pkg.tar.zst'
-        if ($LASTEXITCODE -ne 0) { throw 'Pinned dependency installation failed.' }
+        # One transaction installs only the hash-checked toolchain and
+        # dependency packages; the rolling package repository is never read.
+        & $bash -lc 'root="$(cygpath -u "$OKUFLOW_ADB_BUILD_ROOT")"; pacman -U --needed --noconfirm "$root"/toolchain/*.pkg.tar.zst "$root"/inputs/*.pkg.tar.zst'
+        if ($LASTEXITCODE -ne 0) { throw 'Pinned toolchain and dependency installation failed.' }
     }
     $compiler = & (Join-Path $MsysRoot 'ucrt64\bin\g++.exe') -dumpfullversion
     if ($compiler.Trim() -ne $pins.compiler) {

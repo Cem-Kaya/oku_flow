@@ -340,9 +340,11 @@ bool VerifyProvenance(const std::wstring& canonicalImage,
     const std::wstring manifestPath = JoinPath(platformTools, L"adb-build.json");
     std::string manifestHash;
     if (!Sha256File(manifestPath, 16 * 1024 * 1024, &manifestHash) ||
-        !EqualNoCase(std::wstring(manifestHash.begin(), manifestHash.end()),
-                     std::wstring(expectations.reviewedManifestSha256.begin(),
-                                  expectations.reviewedManifestSha256.end())))
+        std::none_of(expectations.reviewedManifestSha256.begin(),
+                     expectations.reviewedManifestSha256.end(),
+                     [&](const std::string& allowed) {
+                         return LowerAscii(allowed) == LowerAscii(manifestHash);
+                     }))
         return refuse(Detail::ManifestHashMismatch,
                       "adb-build.json does not match the reviewed manifest pin");
 
@@ -1308,7 +1310,10 @@ LegacyAdbRecoveryResult TryReclaimLegacyBundledAdbServer(
     if (!request.port)
         return MakeResult(Status::Failed, Detail::InternalError,
                           "Legacy adb recovery requires a nonzero port");
-    if (!IsHex64(request.expectations.reviewedManifestSha256) ||
+    if (request.expectations.reviewedManifestSha256.empty() ||
+        !std::all_of(request.expectations.reviewedManifestSha256.begin(),
+                     request.expectations.reviewedManifestSha256.end(),
+                     [](const std::string& hash) { return IsHex64(hash); }) ||
         (request.expectations.expectedLauncherProductName.empty() &&
          request.expectations.reviewedLauncherSha256.empty()) ||
         !std::all_of(request.expectations.reviewedLauncherSha256.begin(),

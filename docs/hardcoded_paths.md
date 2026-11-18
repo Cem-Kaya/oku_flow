@@ -1178,13 +1178,14 @@ Update this file whenever these defaults move or new fixed paths are introduced.
   instead of forcing foreground.
 - Source builds use `%LOCALAPPDATA%/OkuFlow/adb-source-build` by default;
   `scripts/build_adb_from_source.ps1 -BuildRoot` selects another local root.
-  Inputs and GCC 16.2.0 are pinned in `scripts/adb-source/pins.json`.
+  Inputs, the MSYS2 toolchain packages and GCC 16.2.0 are pinned in
+  `scripts/adb-source/pins.json`.
 - Staging uses `-SourcePath`, `OKUFLOW_PLATFORM_TOOLS_DIR`, or the default
   `adb-source-build/build-output` directory, in that order. This is a build-output
   root containing `platform-tools`, `licenses` and `sources`, not an SDK directory.
   `scripts/adb-source/distribution.json` pins the reviewed manifest; every file
   is checked before and after copying. Google SDK binaries are not accepted.
-- The source-built version is `37.0.0-okuflow.1` (protocol 41). Runtime closure
+- The source-built version is `37.0.0-okuflow.2` (protocol 41). Runtime closure
   includes adb, both USB DLLs and their dependency DLLs. Corresponding source
   and relinking inputs are `sources/adb-37.0.0-okuflow-source.zip`; notices are
   under `licenses/adb`. See [adb_distribution.md](adb_distribution.md).
