@@ -30,6 +30,31 @@ assertion is refused. Older build trees need reconfiguration and a successful
 application build. These checks do
 not establish GPU, driver, installer-guest or public-release acceptance.
 
+## Published 0.4.1 (2026-11-18)
+
+[GitHub v0.4.1](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.4.1)
+contains the unsigned-preview MSI and portable ZIP from clean source
+`efc3587a323d06c5453f8e3c18942960cb2d2821`. The draft's assets were downloaded
+and rehashed against the local files before publication.
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `OkuFlow-0.4.1-x64.msi` | 1,093,812,224 | `ae09bc0b646bea3eeea02f6a7c445872dbeee6ffd281eaae971a12e2b121890c` |
+| `OkuFlow-0.4.1-windows-x64.zip` | 1,528,234,052 | `4ed8e772db713dbfba100703418e9a85fa7dd9b3529bcb8e076c38b4464d7b93` |
+
+The run used Windows 11 Pro 10.0.26300, MSVC 2022, Qt 6.12.0 and CUDA 12.9.86.
+The CPU gate reported 328 passed, 9 skipped and 0 unresolved; the CUDA delta
+gate 17 passed and 5 skipped; the shipping-bundle gate 341 passed with the
+`windows-cuda` capability profile `Passed`; the disposable Windows Sandbox
+installer acceptance passed 427 checks against the 0.4.0 MSI. The 202-file
+package keeps the adb build output of 0.4.0 (restored from the published ZIP
+and hash-checked against `scripts/adb-source/distribution.json`) because the
+source-build recipe's pinned MSYS2 packages no longer install together.
+GitHub answered HTTP 500 to the script's draft creation; the same assets, notes
+and commit were then uploaded, verified and published with the script's own
+commands. The phone reconnect work in this release was exercised with a fake
+adb server and fixture processes only, without a phone attached.
+
 ## Published channels (2026-10-24)
 
 [GitHub v0.3.1](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.3.1)
@@ -152,6 +177,22 @@ pwsh -NoProfile -File scripts/publish_windows_release.ps1 -Version 0.2.5 `
   -NotesFile C:\release-notes\0.2.5.md -AllowUnsignedPreview `
   -PreviousInstallerPath C:\release-fixtures\OkuFlow-0.2.4-x64.msi -Publish
 ```
+
+The release environment needs three settings that the script does not supply.
+`CMAKE_ARGS` must select the accepted bridge configuration,
+`-DOKUFLOW_CONTROL_CATALOG_EDITION=v1 -DOKUFLOW_MCP_DEPLOYED_IMAGE_POLICY=ON`;
+otherwise the bundle's cache gate refuses after the whole matrix has run.
+`OKUFLOW_TEST_ORIGINAL_RECORDING_NATIVE=1` lets `recording_manager` run its
+native codec row, which the `windows-cuda` capability profile needs strictly
+`Passed`. The OCR payload and adb roots come from `OKUFLOW_UCT_PAYLOAD_RUNTIME`,
+`OKUFLOW_UCT_PAYLOAD_SDK`, `OKUFLOW_UCT_PAYLOAD_CUDA` and
+`OKUFLOW_PLATFORM_TOOLS_DIR`. An elevated window in the foreground (for example
+Task Manager) makes every native GUI case report a desktop interruption; the
+gate then keeps those rows as blockers for an unchanged test binary, and a
+later full run does not repeat them. Clear them with
+`agent_build.bat --retry-interrupted` or `run_test_gate.ps1 -RecheckAfterRepair`
+from the same environment as the release run, because `PATH` is part of the
+fingerprint.
 
 `-Publish` also requires the tracked disposable Windows VM installer acceptance.
 The command uploads MSI, ZIP and checksums to a draft, downloads and rehashes all
