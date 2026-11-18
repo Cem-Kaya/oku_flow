@@ -30,6 +30,30 @@ assertion is refused. Older build trees need reconfiguration and a successful
 application build. These checks do
 not establish GPU, driver, installer-guest or public-release acceptance.
 
+## Published 0.4.2 (2026-11-18)
+
+[GitHub v0.4.2](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.4.2)
+contains the unsigned-preview MSI and portable ZIP from clean source
+`8cd144451b07ebd9ae5d90096cd343bdc379a8fb`. The draft's assets were downloaded
+and rehashed against the local files before publication.
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `OkuFlow-0.4.2-x64.msi` | 1,094,565,888 | `27ed0e30c0d856193300fdc4bc14ffa5cc0dc4c57adfee4a735d515ab4c71822` |
+| `OkuFlow-0.4.2-windows-x64.zip` | 1,529,016,496 | `8838b2c2f5202b308114ee7840c1fc0ebfe21c1398fabb7628aa7c3ed39fb800` |
+
+The run used Windows 11 Pro 10.0.26300, MSVC 2022, Qt 6.12.0 and CUDA 12.9.86.
+The CPU gate reported 328 passed, 9 skipped and 0 unresolved; the CUDA delta
+gate 17 passed and 5 skipped; the shipping-bundle gate 341 passed with the
+`windows-cuda` capability profile `Passed`; the disposable Windows Sandbox
+installer acceptance passed 429 checks against the 0.4.1 MSI. The 203-file
+package carries adb `37.0.0-okuflow.2`, rebuilt with the refreshed recipe and
+pinned in `scripts/adb-source/distribution.json`. The first full run stopped
+when a Windows notification banner held the foreground through six native GUI
+rows; they were rerun with the gate's tracked retry modes after it was
+dismissed. A later run stopped in Sandbox acceptance because C: had under 1 GB
+free; it passed after release intermediates were removed.
+
 ## Published 0.4.1 (2026-11-18)
 
 [GitHub v0.4.1](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.4.1)
