@@ -9,8 +9,19 @@ pwsh -NoProfile -File scripts/build_adb_from_source.ps1 -InputDirectory ./inputs
 
 Install Visual Studio 2022 with C++/Windows SDK support first. The script creates
 an isolated MSYS2 UCRT64 installation under `%LOCALAPPDATA%/OkuFlow/adb-source-build`.
-Initial toolchain setup needs internet. Every source/patch/library input is
-included in `inputs/` and checked against `scripts/adb-source/pins.json`.
+That path, and any `-BuildRoot` or `-MsysRoot`, must use only ASCII letters,
+digits, `_`, `.` and `-`; otherwise pass a plain `-BuildRoot` such as `C:\adb-build`.
+Every source/patch/library input is included in `inputs/` and checked against
+`scripts/adb-source/pins.json`. The MSYS2 base and build-tool packages are not
+included; the script downloads them once (internet needed) and checks each one
+against the same file. It installs only those exact packages, with no package
+repository configured, and never runs a rolling MSYS2 update. `-SkipToolchainSetup`
+downloads no toolchain packages and installs nothing; the dependency packages
+already installed must then be the pinned versions. This assumes a GCC
+16.2.0-7 toolchain; install `inputs/*.pkg.tar.zst` first with
+`pacman --config <conf> -U`, where `<conf>` is a copy of `pacman.conf` holding
+only its `[options]` section (a full run writes one as `pacman-offline.conf`),
+so nothing comes from the rolling repository.
 GCC 16.2.0 is the validated compiler. A later compiler is rejected until its
 build is reviewed. The exact dependency package versions are included locally.
 

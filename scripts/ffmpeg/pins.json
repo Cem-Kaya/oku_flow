@@ -12,5 +12,5 @@
   ],
   "configure": ["--target-os=mingw32","--arch=x86_64","--cc=gcc","--enable-shared","--disable-static","--disable-autodetect","--enable-libdav1d","--disable-network","--disable-protocols","--disable-programs","--disable-doc","--disable-avdevice","--disable-avfilter","--disable-postproc","--disable-encoders","--disable-muxers","--disable-hwaccels","--disable-debug"],
   "runtime": ["avutil-59.dll","avcodec-61.dll","avformat-61.dll","swresample-5.dll","swscale-8.dll","libdav1d.dll","libwinpthread-1.dll"],
-  "winpthreadSha256": "76cc52adfcdb8c800813b2ae8da42a908934eb1ee54ce8e9744fc8d703c76ee1"
+  "winpthreadSha256": "94a9a4e2fe27b4bc827a4b209e9deb4cc3dc34bc025df06b849144f9d4c588f8"
 }

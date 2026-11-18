@@ -1872,7 +1872,8 @@ so metadata generation cannot silently accept an incomplete copy.
   callback, source and link-episode authority, and cancel/shutdown latches.
   The reclaim checks that authority during its host-kill exit wait and before
   forced termination. `LegacyAdbProvenanceExpectations` pins
-  the manifest, actual adb entry hash, canonical flat/nested layout and launcher
+  an allowlist of reviewed manifest hashes (every source-built adb release,
+  non-empty, each 64 hex), the actual adb entry hash, canonical flat/nested layout and launcher
   product metadata or reviewed launcher SHA. `LegacyAdbRecoveryPolicy` bounds
   mutex/connect/exit waits; test-only callbacks and sibling scan scope isolate
   private race fixtures. Classification and each effect revalidate the exact

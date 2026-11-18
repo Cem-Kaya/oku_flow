@@ -18,16 +18,43 @@ scripts/build_release_bundle.bat
 ```
 
 The build creates an isolated MSYS2 UCRT64 installation under
-`%LOCALAPPDATA%/OkuFlow/adb-source-build`; it does not modify a user's MSYS2.
-Initial toolchain installation needs internet. `-BuildRoot` selects another
-local directory and `-MsysRoot` accepts an existing compatible toolchain.
-Validated GCC is 16.2.0; the script rejects a different compiler for review.
+`%LOCALAPPDATA%/OkuFlow/adb-source-build`; by default it does not modify a
+user's MSYS2. The build root and `-MsysRoot` must be plain ASCII paths of
+letters, digits, `_`, `.` and `-` (an MSYS2 package script and CMake's compiler
+check failed under a path with spaces and `&`); the script refuses other paths
+before downloading anything, so a profile like `C:\Users\R&D` or
+`C:\Users\Müller` needs `-BuildRoot C:\adb-build`. The later steps then need the
+same location: `test_adb_source_build.ps1 -RuntimePath
+<root>\build-output\platform-tools`, `OKUFLOW_PLATFORM_TOOLS_DIR=<root>\build-output`
+(or `stage_platform_tools.ps1 -SourcePath`) for the bundle, and
+`prepare_ffmpeg_playback.ps1 -MsysRoot <root>\msys64`.
+It installs the pinned MSYS2 base and then only the pinned toolchain and
+dependency package files, in one local `pacman -U` transaction; it never reads
+the rolling package repository, so a later MSYS2 update cannot change or break
+the build. The install uses a package configuration without repositories, so
+a dependency missing from the pins fails instead of being downloaded.
+Downloading the pinned packages needs internet once. `-BuildRoot` selects
+another local directory. `-MsysRoot` accepts an existing MSYS2 installation:
+unless `-SkipToolchainSetup` is given, the pinned packages are installed into
+it, which can upgrade or downgrade packages already there. With
+`-SkipToolchainSetup` no toolchain package is downloaded and no package is
+installed (missing source inputs and, for a new build root, the MSYS2 base are
+still fetched); the installed dependency packages must then be exactly the
+pinned versions. This assumes a GCC 16.2.0-7 toolchain: install the source
+ZIP's `inputs/*.pkg.tar.zst` with `pacman --config <conf> -U`, where `<conf>` is
+a copy of `pacman.conf` holding only its `[options]` section (a full run writes
+one as `pacman-offline.conf`), so nothing comes from the rolling repository. Validated GCC
+is 16.2.0; the script rejects a different compiler.
 Prepared source is retained, never silently discarded.
 
 `scripts/adb-source/pins.json` records SHA-256 values and immutable source/patch
 URLs: android-tools 37.0.0, AOSP Windows USB API sources, five MSYS2 Windows
-patches and the protobuf 36 compatibility patch, plus exact UCRT64 dependency
-package archives. The script builds only the adb target, with bundled libusb,
+patches and the protobuf 36 compatibility patch, exact UCRT64 dependency
+package archives (`inputs`) and every build-tool package (`toolchain`: GCC,
+binutils, CMake, Ninja, NASM, pkgconf, patch, the GoogleTest headers adb's zip code includes, and their dependencies). To move
+to newer packages, resolve the same package set in a fresh copy of the pinned
+MSYS2 base, download it with `pacman -Sw` (which checks the MSYS2 signatures),
+record the new hashes, rebuild and review the output as described below. The script builds only the adb target, with bundled libusb,
 external dependency libraries and wireless mDNS disabled. MSVC 2022 builds
 AdbWinApi.dll and AdbWinUsbApi.dll from source. PE import traversal copies the
 complete runtime closure; this source build needs more than three binaries.

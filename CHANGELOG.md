@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- The bundled adb is rebuilt from the same adb 37.0.0 source as build
+  `37.0.0-okuflow.2`, with current MSYS2 runtime libraries. The build recipe
+  now pins the whole MSYS2 toolchain as hash-checked packages and no longer
+  runs a rolling MSYS2 update, which had stopped the recipe from building.
+- Recovery of a stuck adb server left running by an earlier OkuFlow release
+  accepts every reviewed adb build, so it still works after the adb update.
+
 ## [0.4.1] - 2026-11-18
 
 - USB reconnects require a fresh matching listing on the observed server.

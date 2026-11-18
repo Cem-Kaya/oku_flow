@@ -54,12 +54,16 @@ namespace okuflow {
 
 inline constexpr std::uint16_t kLegacyAdbDefaultPort = 5037;
 
-// SHA-256 of the reviewed platform-tools/adb-build.json, pinned identically
-// in scripts/adb-source/distribution.json. A new reviewed adb build must
-// update both pins together; the value is a production constant, never read
-// from the environment.
-inline constexpr char kReviewedAdbBuildManifestSha256[] =
+// SHA-256 of each reviewed platform-tools/adb-build.json. The current build
+// is pinned identically in scripts/adb-source/distribution.json; earlier
+// reviewed builds stay listed so a server left running by an older OkuFlow
+// release remains reclaimable. A new reviewed adb build adds its pin here and
+// replaces the distribution pin. Production constants, never read from the
+// environment.
+inline constexpr char kReviewedAdbBuildManifestSha256Okuflow1[] =  // 37.0.0-okuflow.1
     "f91532bab5d146a1dd0dc646629afb8ce77a626c0cde0b015e71c8dfcbb00b1c";
+inline constexpr char kReviewedAdbBuildManifestSha256[] =  // 37.0.0-okuflow.2
+    "5013a1223c0c64b9b8fca81480d14f808df1a83c1589014443d7b9ec2f75797a";
 // Windows VERSIONINFO ProductName the bundle launcher (oku_flow.exe) must
 // carry for its bundle to count as an OkuFlow distribution.
 inline constexpr wchar_t kExpectedOkuFlowLauncherProductName[] = L"OkuFlow";
@@ -112,7 +116,10 @@ enum class LegacyAdbRecoveryDetail {
 // distribution. Nothing here is read from ambient environment state, and a
 // non-empty requiredDistributionRoot only ever narrows acceptance.
 struct LegacyAdbProvenanceExpectations {
-    std::string reviewedManifestSha256{kReviewedAdbBuildManifestSha256};
+    // Exact SHA-256 allowlist for adb-build.json; at least one entry, each
+    // 64 hex. Production pins every reviewed source build.
+    std::vector<std::string> reviewedManifestSha256{kReviewedAdbBuildManifestSha256Okuflow1,
+                                                    kReviewedAdbBuildManifestSha256};
     std::wstring expectedLauncherProductName{kExpectedOkuFlowLauncherProductName};
     // Exact SHA-256 allowlist for reviewed legacy launchers that carry no
     // VERSIONINFO ProductName. A launcher is accepted when its ProductName

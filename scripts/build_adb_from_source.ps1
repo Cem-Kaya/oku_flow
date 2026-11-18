@@ -10,7 +10,7 @@ starts, replaces or stops an adb server. See docs/adb_distribution.md.
 #>
 [CmdletBinding()]
 param(
-    [string]$BuildRoot = (Join-Path $env:LOCALAPPDATA 'OkuFlow\adb-source-build'),
+    [ValidateNotNullOrEmpty()][string]$BuildRoot = (Join-Path $env:LOCALAPPDATA 'OkuFlow\adb-source-build'),
     [string]$MsysRoot,
     [string]$InputDirectory,
     [switch]$SkipToolchainSetup
@@ -18,14 +18,25 @@ param(
 $ErrorActionPreference = 'Stop'
 $recipeRoot = Join-Path $PSScriptRoot 'adb-source'
 $pins = Get-Content (Join-Path $recipeRoot 'pins.json') -Raw | ConvertFrom-Json
-$BuildRoot = [IO.Path]::GetFullPath($BuildRoot)
-if (-not $MsysRoot) { $MsysRoot = Join-Path $BuildRoot 'msys64' }
+function Resolve-PlainRoot([string]$Path, [string]$Name) {
+    # Relative paths resolve against the PowerShell location. An MSYS2 package
+    # script split, and CMake's compiler check failed on, a root with spaces and
+    # '&' (2026-11-18), so only plain ASCII paths are accepted, before anything
+    # is downloaded or created.
+    $full = [IO.Path]::GetFullPath($PSCmdlet.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)).TrimEnd('\')
+    if ($full -cnotmatch '^[A-Za-z]:(\\[A-Za-z0-9_.-]+)+$') {
+        throw "$Name '$full' must be a plain path of ASCII letters, digits, '_', '.' and '-', such as C:\adb-build; pass -$Name."
+    }
+    return $full
+}
+$BuildRoot = Resolve-PlainRoot $BuildRoot 'BuildRoot'
+$MsysRoot = if ($MsysRoot) { Resolve-PlainRoot $MsysRoot 'MsysRoot' } else { Join-Path $BuildRoot 'msys64' }
 New-Item -ItemType Directory -Path $BuildRoot -Force | Out-Null
 $inputs = Join-Path $BuildRoot 'inputs'
 New-Item -ItemType Directory -Path $inputs -Force | Out-Null
 
-function Get-VerifiedInput([string]$Name, [string]$Url, [string]$Sha256) {
-    $path = Join-Path $inputs $Name
+function Get-VerifiedInput([string]$Name, [string]$Url, [string]$Sha256, [string]$Directory = $inputs) {
+    $path = Join-Path $Directory $Name
     if (-not (Test-Path -LiteralPath $path)) {
         $supplied = if ($InputDirectory) { Join-Path $InputDirectory $Name } else { '' }
         if ($supplied -and (Test-Path -LiteralPath $supplied)) {
@@ -39,6 +50,40 @@ function Get-VerifiedInput([string]$Name, [string]$Url, [string]$Sha256) {
 }
 foreach ($input in $pins.inputs) {
     [void](Get-VerifiedInput $input.name $input.url $input.sha256)
+}
+# The build tools are pinned like the sources: a rolling MSYS2 update would
+# otherwise replace them and clash with the pinned dependency packages.
+# Relinking with -SkipToolchainSetup reuses an existing toolchain and needs
+# none of these downloads.
+$toolchain = Join-Path $BuildRoot 'toolchain'
+$packageFiles = [Collections.Generic.List[string]]::new()
+if (-not $SkipToolchainSetup) {
+    New-Item -ItemType Directory -Path $toolchain -Force | Out-Null
+    foreach ($package in $pins.toolchain) {
+        $packageFiles.Add((Get-VerifiedInput $package.name $package.url $package.sha256 $toolchain))
+    }
+}
+foreach ($input in @($pins.inputs | Where-Object dependency)) {
+    $packageFiles.Add((Join-Path $inputs $input.name))
+}
+function Get-PackageIdentity([string]$FileName) {
+    # name-version-release-arch.pkg.tar.zst -> "name version-release", as pacman -Q prints it.
+    if ($FileName -notmatch '^(.+)-([^-]+)-([^-]+)-(any|x86_64)\.pkg\.tar\.zst$') {
+        throw "Unrecognized package file name: $FileName"
+    }
+    return "$($Matches[1]) $($Matches[2])-$($Matches[3])"
+}
+$prepared = Join-Path $BuildRoot 'prepared'
+$source = Join-Path $prepared 'android-tools-37.0.0'
+$marker = Join-Path $prepared 'recipe.sha256'
+$recipeHash = (Get-FileHash (Join-Path $recipeRoot 'pins.json')).Hash
+# Refuse a build root prepared by another recipe before changing its MSYS2.
+if (Test-Path -LiteralPath $marker) {
+    if ((Get-Content $marker -Raw).Trim() -ne $recipeHash) {
+        throw 'Prepared source belongs to a different recipe; choose a fresh -BuildRoot.'
+    }
+} elseif (Test-Path -LiteralPath $prepared) {
+    throw 'Unmarked prepared source already exists; choose a fresh -BuildRoot.'
 }
 $bash = Join-Path $MsysRoot 'usr\bin\bash.exe'
 if (-not (Test-Path -LiteralPath $bash)) {
@@ -57,30 +102,42 @@ $env:CHERE_INVOKING = '1'
 $env:OKUFLOW_ADB_BUILD_ROOT = $BuildRoot
 try {
     if (-not $SkipToolchainSetup) {
-        # The first update may close MSYS2 to finish updating its runtime.
-        & $bash -lc 'pacman -Syu --noconfirm'
-        if ($LASTEXITCODE -ne 0) { throw 'MSYS2 runtime update failed.' }
-        & $bash -lc 'pacman -Syu --noconfirm && pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-nasm mingw-w64-ucrt-x86_64-pkgconf patch git'
-        if ($LASTEXITCODE -ne 0) { throw 'MSYS2 build-tool installation failed.' }
-        & $bash -lc 'root="$(cygpath -u "$OKUFLOW_ADB_BUILD_ROOT")"; pacman -U --needed --noconfirm "$root"/inputs/*.pkg.tar.zst'
-        if ($LASTEXITCODE -ne 0) { throw 'Pinned dependency installation failed.' }
+        # One transaction installs exactly the hash-checked package files. The
+        # configuration lists no repositories, so a dependency missing from the
+        # pins fails here instead of being fetched from the rolling repository.
+        $conf = @(Get-Content -LiteralPath (Join-Path $MsysRoot 'etc\pacman.conf'))
+        $firstRepository = 0
+        while ($firstRepository -lt $conf.Count -and
+               ($conf[$firstRepository] -notmatch '^\s*\[' -or $conf[$firstRepository] -match '^\s*\[options\]')) {
+            $firstRepository++
+        }
+        if ($firstRepository -eq 0) { throw 'Unrecognized MSYS2 pacman.conf.' }
+        Set-Content -LiteralPath (Join-Path $BuildRoot 'pacman-offline.conf') -Value $conf[0..($firstRepository - 1)] -Encoding ascii
+        # Paths relative to the build root: bash adds the root it received as
+        # environment, so the path never passes through console output decoding.
+        $relativePaths = @($packageFiles | ForEach-Object {
+            $_.Substring($BuildRoot.Length).TrimStart('\').Replace('\', '/') })
+        [IO.File]::WriteAllText((Join-Path $BuildRoot 'pinned-packages.txt'), (($relativePaths -join "`n") + "`n"),
+            [Text.UTF8Encoding]::new($false))
+        & $bash -lc 'root="$(cygpath -u "$OKUFLOW_ADB_BUILD_ROOT")"; mapfile -t packages < "$root/pinned-packages.txt"; pacman --config "$root/pacman-offline.conf" -U --needed --noconfirm "${packages[@]/#/"$root"/}"'
+        if ($LASTEXITCODE -ne 0) { throw 'Pinned toolchain and dependency installation failed.' }
+    }
+    # The packaged DLLs, notices and relinking archives must be the pinned
+    # versions, also when an existing toolchain is reused.
+    $checked = @($pins.inputs | Where-Object dependency)
+    if (-not $SkipToolchainSetup) { $checked += @($pins.toolchain) }
+    $expected = @($checked | ForEach-Object { Get-PackageIdentity $_.name } | Sort-Object)
+    $installed = @(& $bash -lc ('pacman -Q ' + (($expected | ForEach-Object { ($_ -split ' ')[0] }) -join ' ')) | Sort-Object)
+    $queryExit = $LASTEXITCODE
+    $difference = @(Compare-Object $expected $installed | ForEach-Object { $_.InputObject })
+    if ($queryExit -ne 0 -or $difference.Count) {
+        throw "Installed MSYS2 packages differ from pins.json: $($difference -join '; ')"
     }
     $compiler = & (Join-Path $MsysRoot 'ucrt64\bin\g++.exe') -dumpfullversion
     if ($compiler.Trim() -ne $pins.compiler) {
         throw "Compiler $compiler differs from validated GCC $($pins.compiler). Review a toolchain change explicitly."
     }
-    $prepared = Join-Path $BuildRoot 'prepared'
-    $source = Join-Path $prepared 'android-tools-37.0.0'
-    $marker = Join-Path $prepared 'recipe.sha256'
-    $recipeHash = (Get-FileHash (Join-Path $recipeRoot 'pins.json')).Hash
-    if (Test-Path -LiteralPath $marker) {
-        if ((Get-Content $marker -Raw).Trim() -ne $recipeHash) {
-            throw 'Prepared source belongs to a different recipe; choose a fresh -BuildRoot.'
-        }
-    } else {
-        if (Test-Path -LiteralPath $prepared) {
-            throw 'Unmarked prepared source already exists; choose a fresh -BuildRoot.'
-        }
+    if (-not (Test-Path -LiteralPath $marker)) {
         New-Item -ItemType Directory -Path $prepared | Out-Null
         & tar -xJf (Join-Path $inputs 'android-tools-37.0.0.tar.xz') -C $prepared
         if ($LASTEXITCODE -ne 0) { throw 'adb source extraction failed.' }
@@ -90,7 +147,7 @@ try {
         Copy-Item (Join-Path $inputs 'USB_API_LICENSE.txt') (Join-Path $apiSource 'LICENSE')
         Copy-Item (Join-Path $inputs 'AdbWinApi.def') (Join-Path $source 'vendor')
         Copy-Item -LiteralPath $apiSource -Destination (Join-Path $source 'vendor\development') -Recurse
-        & $bash -lc 'set -e; root="$(cygpath -u "$OKUFLOW_ADB_BUILD_ROOT")"; cd "$root/prepared/android-tools-37.0.0"; for file in "$root"/inputs/000[1-5]-*.patch; do patch -p1 -i "$file"; done; cd vendor/adb; patch -p1 -i "$root/inputs/protobuf36.patch"'
+        & $bash -lc 'set -e; root="$(cygpath -u "$OKUFLOW_ADB_BUILD_ROOT")"; cd "$root/prepared/android-tools-37.0.0"; for file in 0001-android-tools-cmake 0002-android-tools-vendor 0003-fix-building-with-gcc-mingw 0004-leave-wstat-as-is 0005-missing-includes; do patch -p1 -i "$root/inputs/$file.patch"; done; cd vendor/adb; patch -p1 -i "$root/inputs/protobuf36.patch"'
         if ($LASTEXITCODE -ne 0) { throw 'Source patching failed.' }
         Set-Content -LiteralPath $marker -Value $recipeHash -Encoding ascii
     }

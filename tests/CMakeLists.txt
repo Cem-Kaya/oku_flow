@@ -159,10 +159,12 @@ if (WIN32)
         Qt6::Core Qt6::Test iphlpapi ws2_32 version advapi32)
     target_compile_definitions(adb_legacy_recovery_tests PRIVATE
         NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE
-        OKUFLOW_ADB_LEGACY_FIXTURE="$<TARGET_FILE:adb_legacy_fixture>")
+        OKUFLOW_ADB_LEGACY_FIXTURE="$<TARGET_FILE:adb_legacy_fixture>"
+        OKUFLOW_ADB_DISTRIBUTION_PIN="${PROJECT_SOURCE_DIR}/scripts/adb-source/distribution.json")
     add_dependencies(adb_legacy_recovery_tests adb_legacy_fixture)
     add_test(NAME adb_legacy_recovery COMMAND adb_legacy_recovery_tests -v1)
     set_tests_properties(adb_legacy_recovery PROPERTIES TIMEOUT 60
+        REQUIRED_FILES "${PROJECT_SOURCE_DIR}/scripts/adb-source/distribution.json"
         ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
     add_executable(adb_owned_child_fixture

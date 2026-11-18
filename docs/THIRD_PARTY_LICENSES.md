@@ -468,9 +468,9 @@ the project's contribution/license terms. Neither generation tool is redistribut
 - Upstream source: [android-tools 37.0.0](https://github.com/nmeum/android-tools/releases/tag/37.0.0),
   which includes AOSP adb and its source dependencies; Windows USB DLL source:
   [MSYS2 adbwinapi](https://github.com/msys2/adbwinapi).
-- Distribution version: `37.0.0-okuflow.1`, adb protocol 41. Inputs, patches
-  and exact development-library packages are SHA-256 pinned in
-  `scripts/adb-source/pins.json`. The reviewed output manifest is pinned in
+- Distribution version: `37.0.0-okuflow.2`, adb protocol 41. Inputs, patches,
+  exact development-library packages and the complete MSYS2 build toolchain
+  are SHA-256 pinned in `scripts/adb-source/pins.json`. The reviewed output manifest is pinned in
   `scripts/adb-source/distribution.json`.
 - Build: GCC 16.2.0 / MSYS2 UCRT64 for adb, MSVC 2022 for both USB DLLs.
   Only adb and the USB DLL targets are built. Wireless mDNS is disabled.
@@ -491,16 +491,16 @@ the project's contribution/license terms. Neither generation tool is redistribut
 | AOSP adb and Windows USB API | Apache-2.0 | Separate executable and USB DLLs; `AOSP_ADB_NOTICE.txt`, `APACHE_2_0.txt` |
 | libusb 1.0.29, AOSP commit `e392f3b7f7c3550c665793db2eea37a95c3bb105` | LGPL-2.1-or-later | Static; `LIBUSB_LGPL_2_1.txt`, `LIBUSB_NOTICE.txt`; full corresponding source/relinking ZIP |
 | BoringSSL snapshot in the pinned source archive | Composite upstream license (`LicenseRef-BoringSSL` in SBOM) | Static; complete `BORINGSSL_LICENSE.txt` retained and extracted into SBOM |
-| Abseil 20260526.0-1 | Apache-2.0 | DLLs; `abseil-cpp/` |
-| Protobuf 36.2-1 | BSD-3-Clause | DLLs; `protobuf/` |
+| Abseil 20260817.0-1 | Apache-2.0 | DLLs; `abseil-cpp/` |
+| Protobuf 36.2-2 | BSD-3-Clause | DLLs; `protobuf/` |
 | utf8_range, Protobuf 36.2 snapshot | MIT | DLL; `UTF8_RANGE_LICENSE.txt` |
-| Brotli 1.2.0-1 | MIT | DLLs; `brotli/` |
-| LZ4 1.10.0-1 | BSD-2-Clause | DLL; `lz4/LICENSE` |
+| Brotli 1.2.1-1 | MIT | DLLs; `brotli/` |
+| LZ4 1.11.1-2 | BSD-2-Clause | DLL; `lz4/LICENSE` |
 | Zstandard 1.5.7-2 | BSD-3-Clause | DLL; `zstd/` |
-| zlib 1.3.2-2 | Zlib | DLL; `zlib/` |
-| fmt 12.2.0-1 | MIT | Headers; `fmt/` |
-| GCC libgcc/libstdc++ 16.2.0-5 | GPL-3.0-or-later WITH GCC-exception-3.1 | DLLs; full `libgcc/` and `libstdc++/` notices and exception text |
-| MinGW winpthreads 14.0.0.r426.g4564ee4b5-1 | MIT AND BSD-3-Clause | DLL; complete `libwinpthread/` notices |
+| zlib 1.4-2 | Zlib | DLLs (`libz-1.dll` for adb, the `zlib1.dll` name from the same package for Protobuf); `zlib/` |
+| fmt 12.2.1-1 | MIT | Headers; `fmt/` |
+| GCC libgcc/libstdc++ 16.2.0-7 | GPL-3.0-or-later WITH GCC-exception-3.1 | DLLs; full `libgcc/` and `libstdc++/` notices and exception text |
+| MinGW winpthreads 14.0.0.r598.ge3d18511f-1 | MIT AND BSD-3-Clause | DLL; complete `libwinpthread/` notices |
 | MinGW CRT/headers | Component terms in retained original notices | Toolchain runtime/header material; complete `crt/` and `headers/` notices |
 | MSYS2 Windows recipe/patches | BSD-3-Clause | Applied build adaptation; `MSYS2_RECIPE_LICENSE.txt` |
 

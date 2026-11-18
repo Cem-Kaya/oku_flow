@@ -1153,9 +1153,12 @@ Update this file whenever these defaults move or new fixed paths are introduced.
 - Cancellable adb lock waits use 20 ms slices; Port reads use a synchronize-only
   atomic child snapshot. Server epochs observe loopback port/PID/creation time.
   Borrowed hangs need two failures spanning 5 s before phone-intent recovery.
-  Legacy bundle reclamation pins `adb-build.json` SHA-256
-  `f91532bab5d146a1dd0dc646629afb8ce77a626c0cde0b015e71c8dfcbb00b1c`
-  (same as `scripts/adb-source/distribution.json`) and public v0.2.3 launcher
+  Legacy bundle reclamation accepts the `adb-build.json` SHA-256 of each
+  reviewed build: `f91532bab5d146a1dd0dc646629afb8ce77a626c0cde0b015e71c8dfcbb00b1c`
+  (`37.0.0-okuflow.1`) and
+  `5013a1223c0c64b9b8fca81480d14f808df1a83c1589014443d7b9ec2f75797a`
+  (`37.0.0-okuflow.2`, same as `scripts/adb-source/distribution.json`; a test
+  keeps the two equal). It also pins the public v0.2.3 launcher
   SHA-256 `8bff15f54bfe5111762cda157a3df9d9716f549b3c0bf2d9f612100ccc288b1d`
   as its metadata-free fallback. The public ZIP matched
   `4ec5e2605e70e021b8211a782abcefbffd9543519234dbe060fa80b16a428148`.
@@ -1177,14 +1180,16 @@ Update this file whenever these defaults move or new fixed paths are introduced.
   it. Permission, busy and thermal probe problems wait for phone-state changes
   instead of forcing foreground.
 - Source builds use `%LOCALAPPDATA%/OkuFlow/adb-source-build` by default;
-  `scripts/build_adb_from_source.ps1 -BuildRoot` selects another local root.
-  Inputs and GCC 16.2.0 are pinned in `scripts/adb-source/pins.json`.
+  `scripts/build_adb_from_source.ps1 -BuildRoot` selects another local root;
+  build and MSYS2 roots must be plain ASCII paths (no spaces, `&` or accents).
+  Inputs, the MSYS2 toolchain packages and GCC 16.2.0 are pinned in
+  `scripts/adb-source/pins.json`.
 - Staging uses `-SourcePath`, `OKUFLOW_PLATFORM_TOOLS_DIR`, or the default
   `adb-source-build/build-output` directory, in that order. This is a build-output
   root containing `platform-tools`, `licenses` and `sources`, not an SDK directory.
   `scripts/adb-source/distribution.json` pins the reviewed manifest; every file
   is checked before and after copying. Google SDK binaries are not accepted.
-- The source-built version is `37.0.0-okuflow.1` (protocol 41). Runtime closure
+- The source-built version is `37.0.0-okuflow.2` (protocol 41). Runtime closure
   includes adb, both USB DLLs and their dependency DLLs. Corresponding source
   and relinking inputs are `sources/adb-37.0.0-okuflow-source.zip`; notices are
   under `licenses/adb`. See [adb_distribution.md](adb_distribution.md).
