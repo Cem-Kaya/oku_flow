@@ -164,6 +164,7 @@ if (WIN32)
     add_dependencies(adb_legacy_recovery_tests adb_legacy_fixture)
     add_test(NAME adb_legacy_recovery COMMAND adb_legacy_recovery_tests -v1)
     set_tests_properties(adb_legacy_recovery PROPERTIES TIMEOUT 60
+        REQUIRED_FILES "${PROJECT_SOURCE_DIR}/scripts/adb-source/distribution.json"
         ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
     add_executable(adb_owned_child_fixture

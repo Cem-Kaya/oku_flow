@@ -103,11 +103,13 @@ try {
         }
         if ($firstRepository -eq 0) { throw 'Unrecognized MSYS2 pacman.conf.' }
         Set-Content -LiteralPath (Join-Path $BuildRoot 'pacman-offline.conf') -Value $conf[0..($firstRepository - 1)] -Encoding ascii
-        $cygpath = Join-Path $MsysRoot 'usr\bin\cygpath.exe'
-        $unixPaths = @($packageFiles | ForEach-Object { (& $cygpath -u $_).Trim() })
-        [IO.File]::WriteAllText((Join-Path $BuildRoot 'pinned-packages.txt'), (($unixPaths -join "`n") + "`n"),
+        # Paths relative to the build root: bash adds the root it received as
+        # UTF-16 environment, so a non-ASCII user profile path stays intact.
+        $relativePaths = @($packageFiles | ForEach-Object {
+            $_.Substring($BuildRoot.Length).TrimStart('\').Replace('\', '/') })
+        [IO.File]::WriteAllText((Join-Path $BuildRoot 'pinned-packages.txt'), (($relativePaths -join "`n") + "`n"),
             [Text.UTF8Encoding]::new($false))
-        & $bash -lc 'root="$(cygpath -u "$OKUFLOW_ADB_BUILD_ROOT")"; mapfile -t packages < "$root/pinned-packages.txt"; pacman --config "$root/pacman-offline.conf" -U --needed --noconfirm "${packages[@]}"'
+        & $bash -lc 'root="$(cygpath -u "$OKUFLOW_ADB_BUILD_ROOT")"; mapfile -t packages < "$root/pinned-packages.txt"; pacman --config "$root/pacman-offline.conf" -U --needed --noconfirm "${packages[@]/#/$root/}"'
         if ($LASTEXITCODE -ne 0) { throw 'Pinned toolchain and dependency installation failed.' }
     }
     # The packaged DLLs, notices and relinking archives must be the pinned

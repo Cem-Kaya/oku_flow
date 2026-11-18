@@ -18,7 +18,8 @@ scripts/build_release_bundle.bat
 ```
 
 The build creates an isolated MSYS2 UCRT64 installation under
-`%LOCALAPPDATA%/OkuFlow/adb-source-build`; it does not modify a user's MSYS2.
+`%LOCALAPPDATA%/OkuFlow/adb-source-build`; by default it does not modify a
+user's MSYS2.
 It installs the pinned MSYS2 base and then only the pinned toolchain and
 dependency package files, in one local `pacman -U` transaction; it never reads
 the rolling package repository, so a later MSYS2 update cannot change or break
@@ -28,8 +29,11 @@ Downloading the pinned packages needs internet once. `-BuildRoot` selects
 another local directory. `-MsysRoot` accepts an existing MSYS2 installation:
 unless `-SkipToolchainSetup` is given, the pinned packages are installed into
 it, which can upgrade or downgrade packages already there. With
-`-SkipToolchainSetup` nothing is downloaded or installed, but the installed
-dependency packages must still be exactly the pinned versions. Validated GCC
+`-SkipToolchainSetup` no toolchain package is downloaded and no package is
+installed (missing source inputs and, for a new build root, the MSYS2 base are
+still fetched); the installed dependency packages must then be exactly the
+pinned versions, for example after `pacman -U` of the source ZIP's
+`inputs/*.pkg.tar.zst` files. Validated GCC
 is 16.2.0; the script rejects a different compiler.
 Prepared source is retained, never silently discarded.
 

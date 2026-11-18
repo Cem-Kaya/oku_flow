@@ -14,8 +14,9 @@ Every source/patch/library input is included in `inputs/` and checked against
 included; the script downloads them once (internet needed) and checks each one
 against the same file. It installs only those exact packages, with no package
 repository configured, and never runs a rolling MSYS2 update. `-SkipToolchainSetup`
-downloads nothing; the dependency packages already installed must then be the
-pinned versions.
+downloads no toolchain packages and installs nothing; the dependency packages
+already installed must then be the pinned versions (install them with
+`pacman -U` from `inputs/*.pkg.tar.zst` first).
 GCC 16.2.0 is the validated compiler. A later compiler is rejected until its
 build is reviewed. The exact dependency package versions are included locally.
 
