@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-18
+
 - USB reconnects require a fresh matching listing on the observed server.
   An offline phone listed without a transport ID goes directly to the
   bounded restart of OkuFlow's own server, including when it runs beside a
