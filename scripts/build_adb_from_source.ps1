@@ -18,7 +18,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $recipeRoot = Join-Path $PSScriptRoot 'adb-source'
 $pins = Get-Content (Join-Path $recipeRoot 'pins.json') -Raw | ConvertFrom-Json
-$BuildRoot = [IO.Path]::GetFullPath($BuildRoot)
+$BuildRoot = [IO.Path]::GetFullPath([IO.Path]::Combine((Get-Location).ProviderPath, $BuildRoot))
+# An MSYS2 package script split, and CMake's compiler check failed on, a build
+# root containing spaces and '&' (2026-11-18); refuse such a path before
+# downloading anything.
+if ($BuildRoot -match '[ &]') {
+    throw "Build root '$BuildRoot' contains a space or '&'; pass -BuildRoot with a plain path such as C:\adb-build."
+}
 if (-not $MsysRoot) { $MsysRoot = Join-Path $BuildRoot 'msys64' }
 New-Item -ItemType Directory -Path $BuildRoot -Force | Out-Null
 $inputs = Join-Path $BuildRoot 'inputs'
@@ -109,7 +115,7 @@ try {
             $_.Substring($BuildRoot.Length).TrimStart('\').Replace('\', '/') })
         [IO.File]::WriteAllText((Join-Path $BuildRoot 'pinned-packages.txt'), (($relativePaths -join "`n") + "`n"),
             [Text.UTF8Encoding]::new($false))
-        & $bash -lc 'root="$(cygpath -u "$OKUFLOW_ADB_BUILD_ROOT")"; mapfile -t packages < "$root/pinned-packages.txt"; pacman --config "$root/pacman-offline.conf" -U --needed --noconfirm "${packages[@]/#/$root/}"'
+        & $bash -lc 'root="$(cygpath -u "$OKUFLOW_ADB_BUILD_ROOT")"; mapfile -t packages < "$root/pinned-packages.txt"; pacman --config "$root/pacman-offline.conf" -U --needed --noconfirm "${packages[@]/#/"$root"/}"'
         if ($LASTEXITCODE -ne 0) { throw 'Pinned toolchain and dependency installation failed.' }
     }
     # The packaged DLLs, notices and relinking archives must be the pinned

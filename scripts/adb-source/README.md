@@ -15,8 +15,10 @@ included; the script downloads them once (internet needed) and checks each one
 against the same file. It installs only those exact packages, with no package
 repository configured, and never runs a rolling MSYS2 update. `-SkipToolchainSetup`
 downloads no toolchain packages and installs nothing; the dependency packages
-already installed must then be the pinned versions (install them with
-`pacman -U` from `inputs/*.pkg.tar.zst` first).
+already installed must then be the pinned versions. With a GCC 16.2.0-7
+toolchain, install `inputs/*.pkg.tar.zst` first using
+`pacman --config <repository-free conf> -U` (a full run writes one as
+`pacman-offline.conf`), so nothing comes from the rolling repository.
 GCC 16.2.0 is the validated compiler. A later compiler is rejected until its
 build is reviewed. The exact dependency package versions are included locally.
 

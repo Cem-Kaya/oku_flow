@@ -19,7 +19,9 @@ scripts/build_release_bundle.bat
 
 The build creates an isolated MSYS2 UCRT64 installation under
 `%LOCALAPPDATA%/OkuFlow/adb-source-build`; by default it does not modify a
-user's MSYS2.
+user's MSYS2. The build root must not contain a space or `&` (MSYS2 package
+scripts and CMake's compiler check fail there); the script refuses such a path,
+so a profile like `C:\Users\R&D` needs `-BuildRoot`.
 It installs the pinned MSYS2 base and then only the pinned toolchain and
 dependency package files, in one local `pacman -U` transaction; it never reads
 the rolling package repository, so a later MSYS2 update cannot change or break
@@ -32,8 +34,10 @@ it, which can upgrade or downgrade packages already there. With
 `-SkipToolchainSetup` no toolchain package is downloaded and no package is
 installed (missing source inputs and, for a new build root, the MSYS2 base are
 still fetched); the installed dependency packages must then be exactly the
-pinned versions, for example after `pacman -U` of the source ZIP's
-`inputs/*.pkg.tar.zst` files. Validated GCC
+pinned versions. That suits a GCC 16.2.0-7 toolchain: install the source
+ZIP's `inputs/*.pkg.tar.zst` with `pacman --config <repository-free conf> -U`
+(a full run writes one as `pacman-offline.conf` in its build root), so pacman
+does not fetch other packages from the rolling repository. Validated GCC
 is 16.2.0; the script rejects a different compiler.
 Prepared source is retained, never silently discarded.
 
