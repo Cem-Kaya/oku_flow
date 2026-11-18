@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QLockFile>
 #include <QtTest>
 
@@ -35,23 +36,40 @@ private:
 };
 
 // A native activation failure is a harness precondition failure, never a pass.
+// Another process can hold the foreground for a few seconds without anyone at
+// the desk, such as a Windows notification banner, so activation is retried
+// for up to 8 s while a foreign window is in front. A window that never lets
+// go still ends as an interruption, never as a pass.
 inline bool ActivateFixtureWindow(QWidget* widget)
 {
     QWidget* window = widget->window();
     window->raise();
 #ifdef Q_OS_WIN
     const HWND handle = reinterpret_cast<HWND>(window->winId());
-    const DWORD thread = GetCurrentThreadId();
-    const DWORD foregroundThread = GetWindowThreadProcessId(GetForegroundWindow(), nullptr);
-    const bool attached = foregroundThread && foregroundThread != thread &&
-                          AttachThreadInput(thread, foregroundThread, TRUE);
-    SetForegroundWindow(handle);
-    SetActiveWindow(handle);
-    window->activateWindow();
-    if (attached) AttachThreadInput(thread, foregroundThread, FALSE);
-    return QTest::qWaitFor([&] {
-        return GetForegroundWindow() == handle && window->isActiveWindow();
-    }, 1000);
+    const auto tryActivate = [&] {
+        const DWORD thread = GetCurrentThreadId();
+        const DWORD foregroundThread = GetWindowThreadProcessId(GetForegroundWindow(), nullptr);
+        const bool attached = foregroundThread && foregroundThread != thread &&
+                              AttachThreadInput(thread, foregroundThread, TRUE);
+        SetForegroundWindow(handle);
+        SetActiveWindow(handle);
+        window->activateWindow();
+        if (attached) AttachThreadInput(thread, foregroundThread, FALSE);
+        return QTest::qWaitFor([&] {
+            return GetForegroundWindow() == handle && window->isActiveWindow();
+        }, 1000);
+    };
+    if (tryActivate()) return true;
+    QElapsedTimer retry;
+    retry.start();
+    while (retry.elapsed() < 8000) {
+        DWORD foregroundProcess = 0;
+        GetWindowThreadProcessId(GetForegroundWindow(), &foregroundProcess);
+        if (!foregroundProcess || foregroundProcess == GetCurrentProcessId()) break;
+        QTest::qWait(250);
+        if (tryActivate()) return true;
+    }
+    return false;
 #else
     window->activateWindow();
     return QTest::qWaitForWindowActive(window, 1000);
