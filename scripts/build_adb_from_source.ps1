@@ -42,11 +42,39 @@ foreach ($input in $pins.inputs) {
 }
 # The build tools are pinned like the sources: a rolling MSYS2 update would
 # otherwise replace them and clash with the pinned dependency packages.
+# Relinking with -SkipToolchainSetup reuses an existing toolchain and needs
+# none of these downloads.
 $toolchain = Join-Path $BuildRoot 'toolchain'
-New-Item -ItemType Directory -Path $toolchain -Force | Out-Null
-foreach ($package in $pins.toolchain) {
-    [void](Get-VerifiedInput $package.name $package.url $package.sha256 $toolchain)
+$packageFiles = [Collections.Generic.List[string]]::new()
+if (-not $SkipToolchainSetup) {
+    New-Item -ItemType Directory -Path $toolchain -Force | Out-Null
+    foreach ($package in $pins.toolchain) {
+        $packageFiles.Add((Get-VerifiedInput $package.name $package.url $package.sha256 $toolchain))
+    }
 }
+foreach ($input in @($pins.inputs | Where-Object dependency)) {
+    $packageFiles.Add((Join-Path $inputs $input.name))
+}
+function Get-PackageIdentity([string]$FileName) {
+    # name-version-release-arch.pkg.tar.zst -> "name version-release", as pacman -Q prints it.
+    if ($FileName -notmatch '^(.+)-([^-]+)-([^-]+)-(any|x86_64)\.pkg\.tar\.zst$') {
+        throw "Unrecognized package file name: $FileName"
+    }
+    return "$($Matches[1]) $($Matches[2])-$($Matches[3])"
+}
+$prepared = Join-Path $BuildRoot 'prepared'
+$source = Join-Path $prepared 'android-tools-37.0.0'
+$marker = Join-Path $prepared 'recipe.sha256'
+$recipeHash = (Get-FileHash (Join-Path $recipeRoot 'pins.json')).Hash
+# Refuse a build root prepared by another recipe before changing its MSYS2.
+if (Test-Path -LiteralPath $marker) {
+    if ((Get-Content $marker -Raw).Trim() -ne $recipeHash) {
+        throw 'Prepared source belongs to a different recipe; choose a fresh -BuildRoot.'
+    }
+} elseif (Test-Path -LiteralPath $prepared) {
+    throw 'Unmarked prepared source already exists; choose a fresh -BuildRoot.'
+}
+$MsysRoot = [IO.Path]::GetFullPath($MsysRoot).TrimEnd('\')
 $bash = Join-Path $MsysRoot 'usr\bin\bash.exe'
 if (-not (Test-Path -LiteralPath $bash)) {
     if ($MsysRoot -ne (Join-Path $BuildRoot 'msys64')) {
@@ -64,27 +92,40 @@ $env:CHERE_INVOKING = '1'
 $env:OKUFLOW_ADB_BUILD_ROOT = $BuildRoot
 try {
     if (-not $SkipToolchainSetup) {
-        # One transaction installs only the hash-checked toolchain and
-        # dependency packages; the rolling package repository is never read.
-        & $bash -lc 'root="$(cygpath -u "$OKUFLOW_ADB_BUILD_ROOT")"; pacman -U --needed --noconfirm "$root"/toolchain/*.pkg.tar.zst "$root"/inputs/*.pkg.tar.zst'
+        # One transaction installs exactly the hash-checked package files. The
+        # configuration lists no repositories, so a dependency missing from the
+        # pins fails here instead of being fetched from the rolling repository.
+        $conf = @(Get-Content -LiteralPath (Join-Path $MsysRoot 'etc\pacman.conf'))
+        $firstRepository = 0
+        while ($firstRepository -lt $conf.Count -and
+               ($conf[$firstRepository] -notmatch '^\s*\[' -or $conf[$firstRepository] -match '^\s*\[options\]')) {
+            $firstRepository++
+        }
+        if ($firstRepository -eq 0) { throw 'Unrecognized MSYS2 pacman.conf.' }
+        Set-Content -LiteralPath (Join-Path $BuildRoot 'pacman-offline.conf') -Value $conf[0..($firstRepository - 1)] -Encoding ascii
+        $cygpath = Join-Path $MsysRoot 'usr\bin\cygpath.exe'
+        $unixPaths = @($packageFiles | ForEach-Object { (& $cygpath -u $_).Trim() })
+        [IO.File]::WriteAllText((Join-Path $BuildRoot 'pinned-packages.txt'), (($unixPaths -join "`n") + "`n"),
+            [Text.UTF8Encoding]::new($false))
+        & $bash -lc 'root="$(cygpath -u "$OKUFLOW_ADB_BUILD_ROOT")"; mapfile -t packages < "$root/pinned-packages.txt"; pacman --config "$root/pacman-offline.conf" -U --needed --noconfirm "${packages[@]}"'
         if ($LASTEXITCODE -ne 0) { throw 'Pinned toolchain and dependency installation failed.' }
+    }
+    # The packaged DLLs, notices and relinking archives must be the pinned
+    # versions, also when an existing toolchain is reused.
+    $checked = @($pins.inputs | Where-Object dependency)
+    if (-not $SkipToolchainSetup) { $checked += @($pins.toolchain) }
+    $expected = @($checked | ForEach-Object { Get-PackageIdentity $_.name } | Sort-Object)
+    $installed = @(& $bash -lc ('pacman -Q ' + (($expected | ForEach-Object { ($_ -split ' ')[0] }) -join ' ')) | Sort-Object)
+    $queryExit = $LASTEXITCODE
+    $difference = @(Compare-Object $expected $installed | ForEach-Object { $_.InputObject })
+    if ($queryExit -ne 0 -or $difference.Count) {
+        throw "Installed MSYS2 packages differ from pins.json: $($difference -join '; ')"
     }
     $compiler = & (Join-Path $MsysRoot 'ucrt64\bin\g++.exe') -dumpfullversion
     if ($compiler.Trim() -ne $pins.compiler) {
         throw "Compiler $compiler differs from validated GCC $($pins.compiler). Review a toolchain change explicitly."
     }
-    $prepared = Join-Path $BuildRoot 'prepared'
-    $source = Join-Path $prepared 'android-tools-37.0.0'
-    $marker = Join-Path $prepared 'recipe.sha256'
-    $recipeHash = (Get-FileHash (Join-Path $recipeRoot 'pins.json')).Hash
-    if (Test-Path -LiteralPath $marker) {
-        if ((Get-Content $marker -Raw).Trim() -ne $recipeHash) {
-            throw 'Prepared source belongs to a different recipe; choose a fresh -BuildRoot.'
-        }
-    } else {
-        if (Test-Path -LiteralPath $prepared) {
-            throw 'Unmarked prepared source already exists; choose a fresh -BuildRoot.'
-        }
+    if (-not (Test-Path -LiteralPath $marker)) {
         New-Item -ItemType Directory -Path $prepared | Out-Null
         & tar -xJf (Join-Path $inputs 'android-tools-37.0.0.tar.xz') -C $prepared
         if ($LASTEXITCODE -ne 0) { throw 'adb source extraction failed.' }
@@ -94,7 +135,7 @@ try {
         Copy-Item (Join-Path $inputs 'USB_API_LICENSE.txt') (Join-Path $apiSource 'LICENSE')
         Copy-Item (Join-Path $inputs 'AdbWinApi.def') (Join-Path $source 'vendor')
         Copy-Item -LiteralPath $apiSource -Destination (Join-Path $source 'vendor\development') -Recurse
-        & $bash -lc 'set -e; root="$(cygpath -u "$OKUFLOW_ADB_BUILD_ROOT")"; cd "$root/prepared/android-tools-37.0.0"; for file in "$root"/inputs/000[1-5]-*.patch; do patch -p1 -i "$file"; done; cd vendor/adb; patch -p1 -i "$root/inputs/protobuf36.patch"'
+        & $bash -lc 'set -e; root="$(cygpath -u "$OKUFLOW_ADB_BUILD_ROOT")"; cd "$root/prepared/android-tools-37.0.0"; for file in 0001-android-tools-cmake 0002-android-tools-vendor 0003-fix-building-with-gcc-mingw 0004-leave-wstat-as-is 0005-missing-includes; do patch -p1 -i "$root/inputs/$file.patch"; done; cd vendor/adb; patch -p1 -i "$root/inputs/protobuf36.patch"'
         if ($LASTEXITCODE -ne 0) { throw 'Source patching failed.' }
         Set-Content -LiteralPath $marker -Value $recipeHash -Encoding ascii
     }

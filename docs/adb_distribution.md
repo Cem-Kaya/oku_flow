@@ -22,10 +22,15 @@ The build creates an isolated MSYS2 UCRT64 installation under
 It installs the pinned MSYS2 base and then only the pinned toolchain and
 dependency package files, in one local `pacman -U` transaction; it never reads
 the rolling package repository, so a later MSYS2 update cannot change or break
-the build. Downloading those packages needs internet once. `-BuildRoot` selects
-another local directory and `-MsysRoot` accepts an existing MSYS2 installation,
-into which the same pinned packages are installed unless `-SkipToolchainSetup`
-is given. Validated GCC is 16.2.0; the script rejects a different compiler.
+the build. The install uses a package configuration without repositories, so
+a dependency missing from the pins fails instead of being downloaded.
+Downloading the pinned packages needs internet once. `-BuildRoot` selects
+another local directory. `-MsysRoot` accepts an existing MSYS2 installation:
+unless `-SkipToolchainSetup` is given, the pinned packages are installed into
+it, which can upgrade or downgrade packages already there. With
+`-SkipToolchainSetup` nothing is downloaded or installed, but the installed
+dependency packages must still be exactly the pinned versions. Validated GCC
+is 16.2.0; the script rejects a different compiler.
 Prepared source is retained, never silently discarded.
 
 `scripts/adb-source/pins.json` records SHA-256 values and immutable source/patch

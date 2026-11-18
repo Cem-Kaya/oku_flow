@@ -63,7 +63,7 @@ inline constexpr std::uint16_t kLegacyAdbDefaultPort = 5037;
 inline constexpr char kReviewedAdbBuildManifestSha256Okuflow1[] =  // 37.0.0-okuflow.1
     "f91532bab5d146a1dd0dc646629afb8ce77a626c0cde0b015e71c8dfcbb00b1c";
 inline constexpr char kReviewedAdbBuildManifestSha256[] =  // 37.0.0-okuflow.2
-    "e94d747e9fcff6eb2648477f680b532a2cad3f9ac6e5844e42594ff55d86a2e8";
+    "3cbb46eabb8901310d259f1b55c71309194d92ce86e6157807cb20c6e02adeca";
 // Windows VERSIONINFO ProductName the bundle launcher (oku_flow.exe) must
 // carry for its bundle to count as an OkuFlow distribution.
 inline constexpr wchar_t kExpectedOkuFlowLauncherProductName[] = L"OkuFlow";

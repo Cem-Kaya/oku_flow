@@ -277,6 +277,25 @@ private slots:
         QVERIFY(LegacyAdbProvenanceExpectations{}.reviewedLauncherSha256 ==
                 std::vector<std::string>{kReviewedLegacyLauncherSha256});
         QVERIFY(LegacyAdbRecoveryPolicy{}.siblingScanRootForTest.empty());
+        QVERIFY(LegacyAdbProvenanceExpectations{}.reviewedManifestSha256 ==
+                (std::vector<std::string>{kReviewedAdbBuildManifestSha256Okuflow1,
+                                          kReviewedAdbBuildManifestSha256}));
+    }
+
+    void productionPinsIncludeTheShippedAdbBuild()
+    {
+        // The release stages the build pinned in distribution.json; recovery
+        // must recognize a server left running from that same build.
+        QFile pinFile(QStringLiteral(OKUFLOW_ADB_DISTRIBUTION_PIN));
+        QVERIFY(pinFile.open(QIODevice::ReadOnly));
+        const QJsonObject pin = QJsonDocument::fromJson(pinFile.readAll()).object();
+        const std::string shipped =
+            pin.value(QStringLiteral("manifestSha256")).toString().toLower().toStdString();
+        QCOMPARE(shipped, std::string(kReviewedAdbBuildManifestSha256));
+        for (const std::string& hash : LegacyAdbProvenanceExpectations{}.reviewedManifestSha256) {
+            QCOMPARE(hash.size(), std::size_t(64));
+            QVERIFY(hash.find_first_not_of("0123456789abcdef") == std::string::npos);
+        }
     }
 
     void recoversViaHostKill_data()

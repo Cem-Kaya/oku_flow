@@ -1153,9 +1153,12 @@ Update this file whenever these defaults move or new fixed paths are introduced.
 - Cancellable adb lock waits use 20 ms slices; Port reads use a synchronize-only
   atomic child snapshot. Server epochs observe loopback port/PID/creation time.
   Borrowed hangs need two failures spanning 5 s before phone-intent recovery.
-  Legacy bundle reclamation pins `adb-build.json` SHA-256
-  `f91532bab5d146a1dd0dc646629afb8ce77a626c0cde0b015e71c8dfcbb00b1c`
-  (same as `scripts/adb-source/distribution.json`) and public v0.2.3 launcher
+  Legacy bundle reclamation accepts the `adb-build.json` SHA-256 of each
+  reviewed build: `f91532bab5d146a1dd0dc646629afb8ce77a626c0cde0b015e71c8dfcbb00b1c`
+  (`37.0.0-okuflow.1`) and
+  `3cbb46eabb8901310d259f1b55c71309194d92ce86e6157807cb20c6e02adeca`
+  (`37.0.0-okuflow.2`, same as `scripts/adb-source/distribution.json`; a test
+  keeps the two equal). It also pins the public v0.2.3 launcher
   SHA-256 `8bff15f54bfe5111762cda157a3df9d9716f549b3c0bf2d9f612100ccc288b1d`
   as its metadata-free fallback. The public ZIP matched
   `4ec5e2605e70e021b8211a782abcefbffd9543519234dbe060fa80b16a428148`.
